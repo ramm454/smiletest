@@ -1,0 +1,47 @@
+Tech: NestJS, PostgreSQL, RabbitMQ, Redis, TypeScript
+Functions:
+
+// Core Booking Management:
+1. Booking Engine
+   - Create/update/cancel bookings
+   - Multi-service booking (yoga + spa)
+   - Group bookings
+   
+2. Availability Management
+   - Real-time availability checking
+   - Conflict detection
+   - Overbooking prevention
+   
+3. Scheduling Logic
+   - Time slot management
+   - Buffer times between bookings
+   - Resource allocation (rooms, equipment)
+   
+4. Waitlist & Notifications
+   - Automatic waitlist promotion
+   - Cancellation notifications
+   - Reminder notifications
+   
+5. Booking Rules
+   - Cancellation policies
+   - No-show policies
+   - Rescheduling rules
+   
+6. Calendar Integration
+   - iCal/Google Calendar sync
+   - Calendar export
+   
+// Database Schema:
+Booking {
+  id, user_id, class_id/service_id, type, status,
+  start_time, end_time, participants, total_amount,
+  payment_status, special_requests, cancellation_reason
+}
+
+Waitlist {
+  id, class_id, user_id, position, joined_at, notified
+}
+
+BookingRule {
+  id, service_type, min_cancellation_hours, no_show_fee, max_participants
+}

@@ -1,0 +1,21 @@
+# kubernetes/deployments/analytics-service.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics-service
+  namespace: yoga-spa
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: analytics-service
+  template:
+    metadata:
+      labels:
+        app: analytics-service
+    spec:
+      containers:
+      - name: analytics-service
+        image: your-registry/yoga-spa-analytics:latest
+        ports:
+        - containerPort: 8081

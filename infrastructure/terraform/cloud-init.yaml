@@ -1,0 +1,66 @@
+#cloud-config
+packages:
+  - docker.io
+  - docker-compose
+  - nginx
+  - certbot
+  - python3-certbot-nginx
+  - kubectl
+  - kubeadm
+  - kubelet
+  - curl
+  - git
+  - vim
+
+runcmd:
+  # Enable Docker
+  - systemctl enable docker
+  - systemctl start docker
+  
+  # Install k3s (lightweight Kubernetes)
+  - curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--tls-san $(hostname -I | awk '{print $1}')" sh -
+  
+  # Wait for k3s to be ready
+  - sleep 30
+  
+  # Install Helm
+  - curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  
+  # Clone your repo
+  - git clone https://github.com/your-username/yoga-spa-platform /opt/yoga-spa-platform
+  
+  # Setup kubeconfig
+  - mkdir -p /root/.kube
+  - cp /etc/rancher/k3s/k3s.yaml /root/.kube/config
+  - chmod 600 /root/.kube/config
+  
+  # Install cert-manager
+  - kubectl create namespace cert-manager
+  - helm repo add jetstack https://charts.jetstack.io
+  - helm repo update
+  - helm install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace --version v1.12 --set installCRDs=true
+  
+  # Setup Docker registry secret
+  - kubectl create secret docker-registry regcred --docker-server=<your-registry> --docker-username=<your-username> --docker-password=<your-password> --docker-email=<your-email> || true
+  
+  # Create namespaces
+  - kubectl create namespace yoga-spa || true
+  - kubectl create namespace monitoring || true
+
+write_files:
+  - path: /etc/docker/daemon.json
+    content: |
+      {
+        "log-driver": "json-file",
+        "log-opts": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      }
+  - path: /root/.bashrc
+    content: |
+      alias k='kubectl'
+      alias kgp='kubectl get pods'
+      alias kdp='kubectl describe pod'
+      alias kl='kubectl logs'
+      alias kaf='kubectl apply -f'

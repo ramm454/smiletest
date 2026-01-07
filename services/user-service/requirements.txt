@@ -1,0 +1,51 @@
+Tech: NestJS, PostgreSQL, Redis, TypeScript
+Functions:
+
+// Core User Management:
+1. Authentication
+   - Email/password registration
+   - Social login (Google, Facebook)
+   - OAuth 2.0 / OpenID Connect
+   - Multi-factor authentication
+   
+2. Authorization & Roles
+   - RBAC (Admin, Instructor, Member, Guest)
+   - Permission management
+   - Session management
+   
+3. Profile Management
+   - User profiles (personal info, preferences)
+   - Avatar upload
+   - Privacy settings
+   
+4. Security
+   - Password reset flow
+   - Email verification
+   - Account recovery
+   - Security logs
+   
+5. User Preferences
+   - Notification preferences
+   - Yoga style preferences
+   - Spa treatment preferences
+   - Language/theme settings
+   
+6. User Analytics
+   - Login history
+   - Activity tracking
+   - User segmentation
+   
+// Database Schema:
+User {
+  id, email, password_hash, first_name, last_name, phone,
+  role, status, avatar_url, preferences (JSON),
+  created_at, updated_at, last_login
+}
+
+Session {
+  id, user_id, token, expires_at, ip_address, user_agent
+}
+
+UserActivity {
+  id, user_id, activity_type, metadata, timestamp
+}

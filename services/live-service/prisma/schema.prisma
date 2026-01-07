@@ -1,0 +1,360 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model LiveSession {
+  id                  String   @id @default(uuid())
+  title               String
+  description         String?
+  type                String   // yoga, meditation, workshop
+  category            String   // fitness, wellness, education
+  instructorId        String
+  instructor          User     @relation(fields: [instructorId], references: [id])
+  
+  // Scheduling
+  startTime           DateTime
+  endTime             DateTime
+  timezone           String   @default("UTC")
+  duration            Int      // minutes
+  recurrenceRule      String?  // RRULE for recurring sessions
+  recurrenceExceptions Json?   // Dates to exclude from recurrence
+  
+  // Capacity
+  maxParticipants     Int
+  currentParticipants Int      @default(0)
+  waitlistEnabled     Boolean  @default(true)
+  maxWaitlist         Int      @default(10)
+  
+  // Pricing
+  price               Float?   // null for free sessions
+  currency            String   @default("USD")
+  isFree              Boolean  @default(false)
+  
+  // Streaming
+  streamType          StreamType @default(VIDEO) // VIDEO, AUDIO, SCREENSHARE
+  streamUrl           String?
+  playbackUrl         String?
+  streamKey           String?  @unique
+  streamPlatform      String?  // zoom, youtube, vimeo, custom
+  
+  // Access
+  accessType          AccessType @default(PUBLIC) // PUBLIC, PRIVATE, INVITE_ONLY
+  accessCode          String?
+  password            String?
+  requiresApproval    Boolean  @default(false)
+  
+  // Status
+  status              SessionStatus @default(SCHEDULED)
+  startedAt           DateTime?
+  endedAt             DateTime?
+  
+  // Features
+  chatEnabled         Boolean  @default(true)
+  qaEnabled           Boolean  @default(true)
+  pollsEnabled        Boolean  @default(false)
+  recordingEnabled    Boolean  @default(true)
+  breakoutRooms       Boolean  @default(false)
+  
+  // Recording
+  isRecording         Boolean  @default(false)
+  recordingUrl        String?
+  recordingDuration   Int?
+  
+  // Metadata
+  tags                String[]
+  thumbnail           String?
+  agenda              String?
+  materials           Json?    // Array of file URLs
+  
+  // Timestamps
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  // Relations
+  participants        LiveSessionParticipant[]
+  bookings           Booking[] @relation("LiveSessionBookings")
+  waitlist           WaitlistEntry[]
+  polls              Poll[]
+  chatMessages       ChatMessage[]
+  
+  @@index([instructorId])
+  @@index([startTime])
+  @@index([status])
+  @@index([accessType])
+  @@unique([streamKey])
+}
+
+model LiveSessionParticipant {
+  id                  String   @id @default(uuid())
+  sessionId           String
+  session             LiveSession @relation(fields: [sessionId], references: [id])
+  userId              String
+  user                User     @relation(fields: [userId], references: [id])
+  
+  // Role
+  role                ParticipantRole @default(ATTENDEE) // HOST, CO_HOST, ATTENDEE, PANELIST
+  permissions         Json?    // Custom permissions
+  
+  // Status
+  status              ParticipantStatus @default(REGISTERED) // REGISTERED, JOINED, LEFT, REMOVED
+  joinedAt            DateTime?
+  leftAt              DateTime?
+  duration            Int?     // minutes
+  
+  // Technical
+  deviceType          String?  // web, mobile, tablet
+  browser             String?
+  ipAddress           String?
+  streamQuality       String?  // high, medium, low
+  
+  // Interaction
+  videoEnabled        Boolean  @default(false)
+  audioEnabled        Boolean  @default(false)
+  handRaised          Boolean  @default(false)
+  reactions           Json?    // Array of reactions
+  
+  // Timestamps
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  @@unique([sessionId, userId])
+  @@index([sessionId])
+  @@index([userId])
+  @@index([status])
+}
+
+model WaitlistEntry {
+  id                  String   @id @default(uuid())
+  sessionId           String
+  session             LiveSession @relation(fields: [sessionId], references: [id])
+  userId              String
+  user                User     @relation(fields: [userId], references: [id])
+  
+  position            Int
+  status              WaitlistStatus @default(WAITING)
+  notified            Boolean  @default(false)
+  notifiedAt          DateTime?
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  @@unique([sessionId, userId])
+  @@index([sessionId])
+  @@index([userId])
+  @@index([status])
+}
+
+model Poll {
+  id                  String   @id @default(uuid())
+  sessionId           String
+  session             LiveSession @relation(fields: [sessionId], references: [id])
+  createdById         String
+  createdBy           User     @relation(fields: [createdById], references: [id])
+  
+  question            String
+  options             Json     // Array of {id, text}
+  isMultipleChoice    Boolean  @default(false)
+  isAnonymous         Boolean  @default(true)
+  isActive            Boolean  @default(true)
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  // Relations
+  votes               PollVote[]
+  
+  @@index([sessionId])
+  @@index([createdById])
+}
+
+model PollVote {
+  id                  String   @id @default(uuid())
+  pollId              String
+  poll                Poll     @relation(fields: [pollId], references: [id])
+  userId              String
+  user                User     @relation(fields: [userId], references: [id])
+  selectedOptions     Json     // Array of option IDs
+  votedAt             DateTime @default(now())
+  
+  @@unique([pollId, userId])
+  @@index([pollId])
+  @@index([userId])
+}
+
+model ChatMessage {
+  id                  String   @id @default(uuid())
+  sessionId           String
+  session             LiveSession @relation(fields: [sessionId], references: [id])
+  userId              String
+  user                User     @relation(fields: [userId], references: [id])
+  
+  message             String
+  messageType         MessageType @default(TEXT) // TEXT, IMAGE, FILE, POLL
+  metadata            Json?    // For files, reactions, etc.
+  
+  parentId            String?  // For threaded replies
+  parent              ChatMessage? @relation("MessageReplies", fields: [parentId], references: [id])
+  replies             ChatMessage[] @relation("MessageReplies")
+  
+  // Moderation
+  isPinned            Boolean  @default(false)
+  isDeleted           Boolean  @default(false)
+  moderatedBy         String?
+  
+  // Reactions
+  reactions           Json?    // { "like": ["user1", "user2"], "heart": ["user3"] }
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  @@index([sessionId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model Recording {
+  id                  String   @id @default(uuid())
+  sessionId           String
+  session             LiveSession @relation(fields: [sessionId], references: [id])
+  
+  fileName            String
+  fileUrl             String
+  fileSize            Int?     // bytes
+  duration            Int      // seconds
+  format              String   // mp4, webm, etc.
+  resolution          String   // 1080p, 720p, etc.
+  
+  // Processing
+  status              RecordingStatus @default(PROCESSING)
+  processingProgress  Int?     // percentage
+  thumbnailUrl        String?
+  transcriptionUrl    String?
+  
+  // Access
+  isPublic            Boolean  @default(false)
+  downloadEnabled     Boolean  @default(true)
+  
+  // Analytics
+  views               Int      @default(0)
+  uniqueViewers       Int      @default(0)
+  watchTime           Int?     // total minutes watched
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  @@index([sessionId])
+  @@index([status])
+}
+
+model StreamAnalytics {
+  id                  String   @id @default(uuid())
+  sessionId           String
+  session             LiveSession @relation(fields: [sessionId], references: [id])
+  
+  // Viewer metrics
+  peakViewers         Int
+  averageViewers      Int
+  totalViewers        Int
+  retentionRate       Float    // percentage
+  
+  // Quality metrics
+  averageBitrate      Float?
+  bufferRate          Float?
+  avgLatency          Float?
+  
+  // Engagement
+  totalMessages       Int
+  totalReactions      Int
+  pollParticipation   Float?
+  
+  // Geographic
+  countries           Json?    // Array of {country, viewers}
+  
+  timestamp           DateTime @default(now())
+  
+  @@index([sessionId])
+  @@index([timestamp])
+}
+
+// Enums
+enum StreamType {
+  VIDEO
+  AUDIO
+  SCREENSHARE
+  HYBRID
+}
+
+enum AccessType {
+  PUBLIC
+  PRIVATE
+  INVITE_ONLY
+  PASSWORD_PROTECTED
+}
+
+enum SessionStatus {
+  DRAFT
+  SCHEDULED
+  LIVE
+  ENDED
+  CANCELLED
+  RECORDING_AVAILABLE
+}
+
+enum ParticipantRole {
+  HOST
+  CO_HOST
+  PANELIST
+  ATTENDEE
+  MODERATOR
+}
+
+enum ParticipantStatus {
+  REGISTERED
+  JOINED
+  LEFT
+  REMOVED
+  BANNED
+}
+
+enum WaitlistStatus {
+  WAITING
+  PROMOTED
+  CANCELLED
+  EXPIRED
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  FILE
+  POLL
+  SYSTEM
+}
+
+enum RecordingStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+  DELETED
+}
+
+// User model (reference from user-service)
+model User {
+  id                  String   @id @default(uuid())
+  email               String   @unique
+  firstName           String?
+  lastName            String?
+  avatar              String?
+  
+  // For live service
+  liveSessions        LiveSession[]
+  sessionParticipants LiveSessionParticipant[]
+  polls               Poll[]
+  chatMessages        ChatMessage[]
+  pollVotes           PollVote[]
+}

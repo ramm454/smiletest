@@ -1,0 +1,38 @@
+{
+  "name": "yoga-spa-platform",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "services/frontend",
+    "services/api-gateway", 
+    "services/user-service",
+    "services/booking-service",
+    "services/yoga-service",
+    "packages/shared-types",
+    "packages/shared-utils",
+    "packages/ui-components"
+  ],
+  "scripts": {
+    "dev": "docker-compose up -d",
+    "dev:full": "docker-compose -f docker-compose.yml -f docker-compose.override.yml up -d",
+    "build": "docker-compose build",
+    "stop": "docker-compose down",
+    "logs": "docker-compose logs -f",
+    "clean": "docker-compose down -v",
+    "test": "lerna run test",
+    "lint": "lerna run lint",
+    "format": "lerna run format",
+    "install:all": "lerna bootstrap",
+    "db:migrate": "lerna run prisma:migrate",
+    "db:seed": "node databases/seeds/seed.js",
+    "add:service": "./infrastructure/scripts/add-service.sh",
+    "health": "curl http://localhost:3000/api/health"
+  },
+  "devDependencies": {
+    "lerna": "^7.4.2",
+    "concurrently": "^8.2.1",
+    "typescript": "^5.1.6",
+    "@types/node": "^20.5.0",
+    "prisma": "^5.3.1"
+  }
+}

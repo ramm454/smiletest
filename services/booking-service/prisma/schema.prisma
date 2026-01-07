@@ -1,0 +1,302 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Booking {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User?    @relation(fields: [userId], references: [id])
+  
+  // Booking details
+  type            BookingType
+  classId         String?
+  yogaClass       YogaClass? @relation(fields: [classId], references: [id])
+  sessionId       String?
+  liveSession     LiveSession? @relation(fields: [sessionId], references: [id])
+  productId       String?
+  product         Product? @relation(fields: [productId], references: [id])
+  
+  // Schedule
+  startTime       DateTime
+  endTime         DateTime
+  timezone        String   @default("UTC")
+  
+  // Participants
+  participants    Int      @default(1)
+  participantNames String[]
+  guestEmails     String[]
+  
+  // Status
+  status          BookingStatus @default(CONFIRMED)
+  paymentStatus   PaymentStatus @default(PENDING)
+  checkinStatus   CheckinStatus @default(NOT_CHECKED_IN)
+  
+  // Pricing
+  basePrice       Float
+  tax             Float    @default(0.0)
+  discount        Float    @default(0.0)
+  totalAmount     Float
+  currency        String   @default("USD")
+  
+  // Cancellation
+  cancelledAt     DateTime?
+  cancellationReason String?
+  refundAmount    Float    @default(0.0)
+  
+  // Metadata
+  notes           String?
+  specialRequests String?
+  source          String   @default("WEB") // WEB, APP, VOICE, ADMIN
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  reminderSentAt  DateTime?
+  checkedInAt     DateTime?
+  checkedOutAt    DateTime?
+  
+  // Relations
+  payments        Payment[]
+  reviews         Review[]
+  
+  @@index([userId])
+  @@index([classId])
+  @@index([sessionId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([startTime])
+}
+
+model CalendarEvent {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  bookingId       String?  @unique
+  booking         Booking? @relation(fields: [bookingId], references: [id])
+  
+  // Event details
+  title           String
+  description     String?
+  startTime       DateTime
+  endTime         DateTime
+  timezone        String   @default("UTC")
+  
+  // Calendar integration
+  googleEventId   String?
+  outlookEventId  String?
+  appleEventId    String?
+  
+  // Reminders
+  reminders       Json?    // Array of reminder configurations
+  
+  // Status
+  status          String   @default("confirmed")
+  visibility      String   @default("private")
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([bookingId])
+  @@index([startTime])
+}
+
+model WaitlistEntry {
+  id              String   @id @default(uuid())
+  classId         String
+  yogaClass       YogaClass @relation(fields: [classId], references: [id])
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  
+  position        Int
+  status          WaitlistStatus @default(WAITING)
+  
+  notified        Boolean  @default(false)
+  notifiedAt      DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@unique([classId, userId])
+  @@index([classId])
+  @@index([userId])
+  @@index([status])
+}
+
+enum BookingType {
+  YOGA_CLASS
+  LIVE_SESSION
+  PRIVATE_SESSION
+  WORKSHOP
+  RETREAT
+  PRODUCT
+  PACKAGE
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  NO_SHOW
+  COMPLETED
+  WAITLISTED
+  RESCHEDULED
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum CheckinStatus {
+  NOT_CHECKED_IN
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+}
+
+enum WaitlistStatus {
+  WAITING
+  PROMOTED
+  CANCELLED
+  EXPIRED
+}
+
+// Add to existing schema
+model YogaClass {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  type        String   // hatha, vinyasa, etc.
+  difficulty  String   // beginner, intermediate, advanced
+  duration    Int      // minutes
+  capacity    Int
+  booked      Int      @default(0)
+  price       Float?
+  startTime   DateTime
+  endTime     DateTime
+  status      ClassStatus @default(SCHEDULED)
+  instructorId String
+  instructor  User     @relation(fields: [instructorId], references: [id])
+  location    String?
+  room        String?
+  
+  bookings    Booking[]
+  waitlist    WaitlistEntry[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([startTime])
+  @@index([instructorId])
+  @@index([status])
+}
+
+model LiveSession {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  type        String
+  maxParticipants Int
+  currentParticipants Int @default(0)
+  price       Float?
+  startTime   DateTime
+  endTime     DateTime
+  status      SessionStatus @default(SCHEDULED)
+  instructorId String
+  instructor  User     @relation(fields: [instructorId], references: [id])
+  streamUrl   String?
+  recordingUrl String?
+  
+  bookings    Booking[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([startTime])
+  @@index([instructorId])
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  sku         String   @unique
+  price       Float
+  stock       Int
+  category    String
+  images      String[]
+  status      ProductStatus @default(ACTIVE)
+  
+  bookings    Booking[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Payment {
+  id          String   @id @default(uuid())
+  bookingId   String
+  booking     Booking  @relation(fields: [bookingId], references: [id])
+  amount      Float
+  currency    String   @default("USD")
+  status      PaymentStatus
+  paymentMethod String  // card, paypal, etc.
+  transactionId String?
+  metadata    Json?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([bookingId])
+  @@index([status])
+}
+
+model Review {
+  id          String   @id @default(uuid())
+  bookingId   String   @unique
+  booking     Booking  @relation(fields: [bookingId], references: [id])
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  rating      Int      @min(1) @max(5)
+  comment     String?
+  images      String[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([bookingId])
+  @@index([userId])
+}
+
+enum ClassStatus {
+  SCHEDULED
+  LIVE
+  COMPLETED
+  CANCELLED
+  FULL
+}
+
+enum SessionStatus {
+  SCHEDULED
+  LIVE
+  ENDED
+  CANCELLED
+}
+
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+  OUT_OF_STOCK
+  DISCONTINUED
+}

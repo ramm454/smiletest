@@ -1,0 +1,46 @@
+Tech: NestJS, PostgreSQL, Redis, TypeScript
+Functions:
+
+// Core Yoga Management:
+1. Class Management
+   - Create/update/delete yoga classes
+   - Class scheduling (recurring classes)
+   - Class capacity management
+   
+2. Instructor Management
+   - Instructor profiles
+   - Availability management
+   - Ratings & reviews
+   - Specialization tracking
+   
+3. Content Management
+   - Yoga pose library
+   - Class descriptions
+   - Difficulty levels
+   - Equipment requirements
+   
+4. Real-time Updates
+   - Class status (full, cancelled, etc.)
+   - Waitlist management
+   - Real-time availability
+   
+5. Search & Filtering
+   - Search classes by type, time, instructor
+   - Advanced filtering
+   - Location-based search (future)
+   
+// Database Schema:
+YogaClass {
+  id, title, description, type, difficulty, duration,
+  capacity, price, start_time, end_time, instructor_id,
+  status, room, equipment_needed, tags
+}
+
+Instructor {
+  id, user_id, bio, specialties, rating, experience_years,
+  certifications, availability_schedule
+}
+
+ClassSchedule {
+  id, class_id, recurrence_pattern, exceptions, valid_from, valid_to
+}

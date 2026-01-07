@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  # Override for development
+  api-gateway:
+    build:
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./services/api-gateway:/app
+      - /app/node_modules
+    command: npm run start:dev
+
+  frontend:
+    build:
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./services/frontend:/app
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev
+
+  user-service:
+    build:
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./services/user-service:/app
+      - /app/node_modules
+    command: npm run start:dev
+
+  booking-service:
+    build:
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./services/booking-service:/app
+      - /app/node_modules
+    command: npm run start:dev
+
+  yoga-service:
+    build:
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./services/yoga-service:/app
+      - /app/node_modules
+    command: npm run start:dev
+
+  payment-service:
+    build:
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./services/payment-service:/app
+    command: go run main.go
+
+  notification-service:
+    build:
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./services/notification-service:/app
+    command: go run main.go
+
+  analytics-service:
+    build:
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./services/analytics-service:/app
+    command: uvicorn main:app --reload --host 0.0.0.0 --port 3006
+
+  ai-gateway:
+    build:
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./ai/ai-gateway:/app
+    command: uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+  nlp-service:
+    build:
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./ai/nlp-service:/app
+    command: uvicorn main:app --reload --host 0.0.0.0 --port 8001
+
+  agentic-ai-service:
+    build:
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./ai/agentic-ai-service:/app
+    command: uvicorn main:app --reload --host 0.0.0.0 --port 8002
+  user-service:
+    build:
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./services/user-service:/app
+      - /app/node_modules
+    command: npm run start:dev

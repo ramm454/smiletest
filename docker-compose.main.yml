@@ -1,0 +1,708 @@
+version: '3.8'
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+networks:
+  yoga-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  mongodb_data:
+  rabbitmq_data:
+  qdrant_storage:
+  qdrant_data:
+  weaviate_data:
+  grafana_data:
+  prometheus_data:
+  loki_data:
+  nlp_models:
+  ai_agent_models:
+  llm_models:
+  minio_data:
+  stream_recordings:
+
+services:
+  # ============ DATABASES ============
+  postgres:
+    image: postgres:15-alpine
+    container_name: yoga_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin123}
+      POSTGRES_MULTIPLE_DATABASES: ${USER_DB_NAME},${BOOKING_DB_NAME},${YOGA_DB_NAME},${PAYMENT_DB_NAME},${ANALYTICS_DB_NAME},${AI_DB_NAME},ecommerce_db,live_db,staff_db,i18n_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/docker/databases/init-multiple-databases.sh:/docker-entrypoint-initdb.d/init-multiple-databases.sh
+    networks:
+      - yoga-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+
+  redis:
+    image: redis:7-alpine
+    container_name: yoga_redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redis123}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - yoga-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+
+  mongodb:
+    image: mongo:6
+    container_name: yoga_mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-admin123}
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - yoga-network
+    logging: *default-logging
+
+  # ============ MESSAGE QUEUE ============
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: yoga_rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-admin123}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - yoga-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    logging: *default-logging
+
+  # ============ OBJECT STORAGE ============
+  minio:
+    image: minio/minio
+    container_name: yoga_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-admin123}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - yoga-network
+    logging: *default-logging
+
+  # ============ AI VECTOR DATABASES ============
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: yoga_qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+      - qdrant_data:/qdrant/storage
+    networks:
+      - yoga-network
+    restart: unless-stopped
+    logging: *default-logging
+
+  weaviate:
+    image: semitechnologies/weaviate:latest
+    container_name: yoga_weaviate
+    ports:
+      - "8080:8080"
+    environment:
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
+      DEFAULT_VECTORIZER_MODULE: 'none'
+      ENABLE_MODULES: ''
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    networks:
+      - yoga-network
+    logging: *default-logging
+
+  # ============ MONITORING ============
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: yoga_prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infrastructure/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - yoga-network
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    logging: *default-logging
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: yoga_grafana
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infrastructure/monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+    networks:
+      - yoga-network
+    depends_on:
+      - prometheus
+    logging: *default-logging
+
+  loki:
+    image: grafana/loki:latest
+    container_name: yoga_loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./infrastructure/monitoring/loki/loki-config.yaml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    networks:
+      - yoga-network
+    logging: *default-logging
+
+  jaeger:
+    image: jaegertracing/all-in-one
+    container_name: yoga_jaeger
+    ports:
+      - "16686:16686"
+    networks:
+      - yoga-network
+    logging: *default-logging
+
+  # ============ EMAIL TESTING ============
+  mailhog:
+    image: mailhog/mailhog
+    container_name: yoga_mailhog
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+    networks:
+      - yoga-network
+    logging: *default-logging
+
+  # ============ API GATEWAY ============
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile.dev
+    container_name: yoga_api_gateway
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      USER_SERVICE_URL: http://user-service:3001
+      BOOKING_SERVICE_URL: http://booking-service:3002
+      YOGA_SERVICE_URL: http://yoga-service:3003
+      LIVE_SERVICE_URL: http://live-service:3004
+      ECOMMERCE_SERVICE_URL: http://ecommerce-service:3005
+      PAYMENT_SERVICE_URL: http://payment-service:3006
+      NOTIFICATION_SERVICE_URL: http://notification-service:3007
+      ANALYTICS_SERVICE_URL: http://analytics-service:3008
+      AI_GATEWAY_URL: http://ai-gateway:8001
+    networks:
+      - yoga-network
+    depends_on:
+      - user-service
+      - booking-service
+      - yoga-service
+    volumes:
+      - ./services/api-gateway:/app
+      - /app/node_modules
+    logging: *default-logging
+
+  # ============ USER SERVICE ============
+  user-service:
+    build:
+      context: ./services/user-service
+      dockerfile: Dockerfile.dev
+    container_name: yoga_user_service
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin123}@postgres:5432/${USER_DB_NAME}
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis123}@redis:6379
+    networks:
+      - yoga-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./services/user-service:/app
+      - /app/node_modules
+    logging: *default-logging
+
+  # ============ BOOKING SERVICE ============
+  booking-service:
+    build:
+      context: ./services/booking-service
+      dockerfile: Dockerfile.dev
+    container_name: yoga_booking_service
+    ports:
+      - "3002:3002"
+    environment:
+      NODE_ENV: development
+      PORT: 3002
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin123}@postgres:5432/${BOOKING_DB_NAME}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD:-admin123}@rabbitmq:5672
+      USER_SERVICE_URL: http://user-service:3001
+      YOGA_SERVICE_URL: http://yoga-service:3003
+    networks:
+      - yoga-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+    volumes:
+      - ./services/booking-service:/app
+      - /app/node_modules
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging: *default-logging
+
+  # ============ YOGA SERVICE ============
+  yoga-service:
+    build:
+      context: ./services/yoga-service
+      dockerfile: Dockerfile.dev
+    container_name: yoga_yoga_service
+    ports:
+      - "3003:3003"
+    environment:
+      NODE_ENV: development
+      PORT: 3003
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin123}@postgres:5432/${YOGA_DB_NAME}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis123}@redis:6379
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-admin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-admin123}
+    networks:
+      - yoga-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+    volumes:
+      - ./services/yoga-service:/app
+      - /app/node_modules
+    logging: *default-logging
+
+  # ============ LIVE STREAM SERVICE ============
+  live-service:
+    build:
+      context: ./services/live-service
+      dockerfile: Dockerfile.dev
+    container_name: yoga_live_service
+    ports:
+      - "3004:3004"
+      - "1935:1935"  # RTMP port for streaming
+      - "8000:8000"  # HLS port
+    environment:
+      NODE_ENV: development
+      PORT: 3004
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin123}@postgres:5432/live_db
+      STREAM_SECRET: ${STREAM_SECRET:-stream-secret-key}
+      RTMP_PORT: 1935
+      HLS_PORT: 8000
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis123}@redis:6379
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key}
+    networks:
+      - yoga-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./services/live-service:/app
+      - /app/node_modules
+      - stream_recordings:/recordings
+    logging: *default-logging
+
+  # ============ E-COMMERCE SERVICE ============
+  ecommerce-service:
+    build:
+      context: ./services/ecommerce-service
+      dockerfile: Dockerfile.dev
+    container_name: yoga_ecommerce_service
+    ports:
+      - "3005:3005"
+    environment:
+      NODE_ENV: development
+      PORT: 3005
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin123}@postgres:5432/ecommerce_db
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis123}@redis:6379
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+    networks:
+      - yoga-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./services/ecommerce-service:/app
+      - /app/node_modules
+    logging: *default-logging
+
+  # ============ PAYMENT SERVICE ============
+  payment-service:
+    build:
+      context: ./services/payment-service
+      dockerfile: Dockerfile.dev
+    container_name: yoga_payment_service
+    ports:
+      - "3006:3006"
+    environment:
+      PORT: 3006
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin123}@postgres:5432/${PAYMENT_DB_NAME}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis123}@redis:6379
+    networks:
+      - yoga-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./services/payment-service:/app
+    logging: *default-logging
+
+  # ============ NOTIFICATION SERVICE ============
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile.dev
+    container_name: yoga_notification_service
+    ports:
+      - "3007:3007"
+    environment:
+      PORT: 3007
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD:-admin123}@rabbitmq:5672
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
+      TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER}
+    networks:
+      - yoga-network
+    depends_on:
+      rabbitmq:
+        condition: service_started
+    volumes:
+      - ./services/notification-service:/app
+    logging: *default-logging
+
+  # ============ ANALYTICS SERVICE ============
+  analytics-service:
+    build:
+      context: ./services/analytics-service
+      dockerfile: Dockerfile.dev
+    container_name: yoga_analytics_service
+    ports:
+      - "3008:3008"
+    environment:
+      PORT: 3008
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin123}@postgres:5432/${ANALYTICS_DB_NAME}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis123}@redis:6379
+    networks:
+      - yoga-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./services/analytics-service:/app
+    logging: *default-logging
+
+  # ============ STAFF SERVICE ============
+  staff-service:
+    build:
+      context: ./services/staff-service
+      dockerfile: Dockerfile.dev
+    container_name: yoga_staff_service
+    ports:
+      - "3015:3015"
+    environment:
+      PORT: 3015
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin123}@postgres:5432/staff_db
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis123}@redis:6379
+      CALENDAR_API_KEY: ${CALENDAR_API_KEY}
+    networks:
+      - yoga-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./services/staff-service:/app
+      - /app/node_modules
+    logging: *default-logging
+
+  # ============ I18N SERVICE ============
+  i18n-service:
+    build:
+      context: ./services/i18n-service
+      dockerfile: Dockerfile.dev
+    container_name: yoga_i18n_service
+    ports:
+      - "3016:3016"
+    environment:
+      PORT: 3016
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin123}@postgres:5432/i18n_db
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis123}@redis:6379
+    networks:
+      - yoga-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./services/i18n-service:/app
+      - /app/node_modules
+    logging: *default-logging
+
+  # ============ FRONTEND ============
+  frontend:
+    build:
+      context: ./services/frontend
+      dockerfile: Dockerfile.dev
+    container_name: yoga_frontend
+    ports:
+      - "80:3000"
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:3000/api
+      NEXT_PUBLIC_BOOKING_SERVICE_URL: http://booking-service:3002
+      NEXT_PUBLIC_VOICE_SERVICE_URL: http://voice-service:8005
+      NEXT_PUBLIC_AI_GATEWAY_URL: http://ai-gateway:8001
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
+      NEXT_PUBLIC_WEBSOCKET_URL: ws://localhost:3004
+    networks:
+      - yoga-network
+    depends_on:
+      - api-gateway
+    volumes:
+      - ./services/frontend:/app
+      - /app/node_modules
+      - /app/.next
+    logging: *default-logging
+
+  # ============ AI SERVICES ============
+  ai-gateway:
+    build:
+      context: ./ai/ai-gateway
+      dockerfile: Dockerfile.dev
+    container_name: yoga_ai_gateway
+    ports:
+      - "8001:8001"
+    environment:
+      PORT: 8001
+      AGENTIC_AI_URL: http://agentic-ai-service:8002
+      LLM_SERVICE_URL: http://llm-service:8003
+      VECTOR_DB_URL: http://vector-db-service:8004
+      VOICE_SERVICE_URL: http://voice-service:8005
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    networks:
+      - yoga-network
+    depends_on:
+      - agentic-ai-service
+      - llm-service
+    volumes:
+      - ./ai/ai-gateway:/app
+    logging: *default-logging
+
+  agentic-ai-service:
+    build:
+      context: ./ai/agentic-ai-service
+      dockerfile: Dockerfile.dev
+    container_name: yoga_agentic_ai_service
+    ports:
+      - "8002:8002"
+    environment:
+      PORT: 8002
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin123}@postgres:5432/${AI_DB_NAME}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD:-admin123}@rabbitmq:5672
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      LLM_SERVICE_URL: http://llm-service:8003
+      QDRANT_URL: http://qdrant:6333
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis123}@redis:6379
+      BOOKING_SERVICE_URL: http://booking-service:3002
+      YOGA_SERVICE_URL: http://yoga-service:3003
+    networks:
+      - yoga-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+      llm-service:
+        condition: service_started
+      qdrant:
+        condition: service_started
+      redis:
+        condition: service_started
+    volumes:
+      - ./ai/agentic-ai-service:/app
+      - ai_agent_models:/app/models
+    logging: *default-logging
+
+  llm-service:
+    build:
+      context: ./ai/llm-service
+      dockerfile: Dockerfile.dev
+    container_name: yoga_llm_service
+    ports:
+      - "8003:8003"
+    environment:
+      PORT: 8003
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      MODEL_PATH: /app/models
+      QDRANT_URL: http://qdrant:6333
+      MODEL_CACHE_DIR: /app/models
+    networks:
+      - yoga-network
+    depends_on:
+      - qdrant
+    volumes:
+      - ./ai/llm-service:/app
+      - llm_models:/app/models
+    # Optional GPU support
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    logging: *default-logging
+
+  vector-db-service:
+    build: ./ai/vector-db-service
+    container_name: yoga_vector_db_service
+    ports:
+      - "8004:8004"
+    environment:
+      PORT: 8004
+      QDRANT_URL: http://qdrant:6333
+    networks:
+      - yoga-network
+    depends_on:
+      - qdrant
+    logging: *default-logging
+
+  voice-service:
+    build:
+      context: ./ai/voice-service
+      dockerfile: Dockerfile.dev
+    container_name: yoga_voice_service
+    ports:
+      - "8005:8005"
+    environment:
+      PORT: 8005
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD:-admin123}@rabbitmq:5672
+      AGENTIC_AI_URL: http://agentic-ai-service:8002
+      BOOKING_SERVICE_URL: http://booking-service:3002
+      NODE_ENV: development
+    networks:
+      - yoga-network
+    depends_on:
+      - rabbitmq
+      - agentic-ai-service
+    volumes:
+      - ./ai/voice-service:/app
+    restart: unless-stopped
+    logging: *default-logging
+
+  workflow-orchestrator:
+    build: ./ai/workflow-orchestrator
+    container_name: yoga_workflow_orchestrator
+    ports:
+      - "8006:8006"
+    environment:
+      PORT: 8006
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD:-admin123}@rabbitmq:5672
+    networks:
+      - yoga-network
+    depends_on:
+      - rabbitmq
+    logging: *default-logging
+
+  nlp-service:
+    build:
+      context: ./ai/nlp-service
+      dockerfile: Dockerfile.dev
+    container_name: yoga_nlp_service
+    ports:
+      - "8007:8007"
+    environment:
+      PORT: 8007
+      MODEL_PATH: /app/models
+      QDRANT_URL: http://qdrant:6333
+    volumes:
+      - nlp_models:/app/models
+    networks:
+      - yoga-network
+    depends_on:
+      - qdrant
+    logging: *default-logging

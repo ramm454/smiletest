@@ -1,0 +1,35 @@
+Tech: NestJS, TypeScript
+Functions:
+
+// Core Responsibilities:
+1. Request Routing & Load Balancing
+   - Route to appropriate microservice
+   - Load balancing between service instances
+   
+2. Authentication & Authorization
+   - JWT validation
+   - Rate limiting per user/IP
+   - API key management for partners
+   
+3. Request/Response Transformation
+   - Request validation
+   - Response formatting
+   - Error handling standardization
+   
+4. API Composition
+   - Combine data from multiple services
+   - GraphQL support (optional)
+   - REST to gRPC translation
+   
+5. Monitoring & Logging
+   - Request logging
+   - Performance metrics
+   - Audit trails
+   
+6. Caching
+   - Response caching
+   - Cache invalidation
+   
+7. Circuit Breaking & Retry
+   - Failover handling
+   - Retry logic for failed requests

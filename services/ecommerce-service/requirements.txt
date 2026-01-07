@@ -1,0 +1,48 @@
+Tech: NestJS, PostgreSQL, Redis, Stripe
+Functions:
+
+// Core E-commerce Features:
+1. Product Catalog Management
+   - Products (yoga mats, clothing, accessories)
+   - Categories & tags
+   - Inventory tracking
+   - Pricing & discounts
+   
+2. Shopping Cart & Checkout
+   - Cart management
+   - Guest checkout
+   - Coupon codes
+   - Tax calculation
+   
+3. Order Management
+   - Order processing
+   - Order tracking
+   - Returns & refunds
+   - Shipping integration
+   
+4. Reviews & Ratings
+   - Product reviews
+   - Rating system
+   - Review moderation
+   
+5. Supplier Management
+   - Supplier profiles
+   - Purchase orders
+   - Inventory reconciliation
+   
+// Database Schema:
+Product {
+  id, sku, name, description, price, stock_quantity,
+  category_id, tags, images, specifications, status
+}
+
+Order {
+  id, user_id, total_amount, status, shipping_address,
+  billing_address, payment_status, tracking_number
+}
+
+Cart {
+  id, user_id, items: [{
+    product_id, quantity, price, options
+  }]
+}

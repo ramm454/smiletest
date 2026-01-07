@@ -1,0 +1,115 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String   @id @default(uuid())
+  email           String   @unique
+  password        String
+  firstName       String?
+  lastName        String?
+  phone           String?
+  avatar          String?
+  bio             String?
+  role            UserRole @default(MEMBER)
+  status          UserStatus @default(ACTIVE)
+  
+  // Authentication
+  emailVerified   Boolean  @default(false)
+  verificationToken String?
+  resetToken      String?
+  resetTokenExpires DateTime?
+  
+  // Profile
+  dateOfBirth     DateTime?
+  gender          String?
+  preferences     Json?    // JSON: {notifications: {email: true, sms: false}, yogaPreferences: {...}}
+  healthInfo      Json?    // JSON: {injuries: [], goals: [], restrictions: []}
+  
+  // Memberships & Subscriptions
+  membershipType  String?  @default("BASIC")
+  subscriptionId  String?
+  subscriptionStatus String? @default("inactive")
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  lastLoginAt     DateTime?
+  
+  // Relations
+  profiles       UserProfile[]
+  sessions       Session[]
+  bookings       Booking[]
+  orders         Order[]
+  payments       Payment[]
+  reviews        Review[]
+  notifications  Notification[]
+  
+  @@index([email])
+  @@index([role])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model UserProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Yoga preferences
+  experienceLevel String?  @default("beginner") // beginner, intermediate, advanced
+  preferredStyles String[] // ["vinyasa", "hatha", "yin"]
+  goals           String[] // ["flexibility", "strength", "relaxation"]
+  
+  // Health & Fitness
+  height          Float?   // in cm
+  weight          Float?   // in kg
+  medicalConditions String[]
+  injuries        String[]
+  
+  // Communication preferences
+  receiveEmails   Boolean  @default(true)
+  receiveSMS      Boolean  @default(false)
+  receivePush     Boolean  @default(true)
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([userId])
+}
+
+model Session {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token           String   @unique
+  refreshToken    String   @unique
+  ipAddress       String?
+  userAgent       String?
+  expiresAt       DateTime
+  createdAt       DateTime @default(now())
+  
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+}
+
+enum UserRole {
+  ADMIN
+  INSTRUCTOR
+  MEMBER
+  GUEST
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  DELETED
+}

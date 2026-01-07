@@ -1,0 +1,129 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+
+# Environment
+.env
+.env.example 
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Docker
+*.tar.gz
+*.dockerfile
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Coverage
+coverage/
+
+# Build output
+dist/
+build/
+.next/
+
+# Kubernetes
+*.kubeconfig
+
+# Terraform
+.terraform/
+terraform.tfstate*
+*.tfvars
+
+# OS
+.DS_Store
+Thumbs.db
+
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.log
+node_modules/
+dist/
+build/
+.DS_Store
+*.pem
+*.key
+secrets/
+credentials/
+
+
+
+
+
+
+
+
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Dependency locks
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+.cache/
+
+# Runtime data
+*.pid
+*.seed
+*.pid.lock
+
+# Logs
+logs
+*.log
+
+# Coverage directory
+coverage/
+.nyc_output/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/

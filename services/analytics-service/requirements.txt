@@ -1,0 +1,91 @@
+# Core
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# Database
+asyncpg==0.29.0
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+redis==5.0.1
+clickhouse-driver==0.2.6
+
+# Data processing
+pandas==2.1.3
+numpy==1.26.0
+scikit-learn==1.3.2
+
+# Monitoring
+prometheus-client==0.19.0
+structlog==23.2.0
+
+# Utilities
+python-dotenv==1.0.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+python-jose[cryptography]==3.3.0
+
+
+
+
+
+Tech: Python/FastAPI, ClickHouse, Redis, Elasticsearch
+Functions:
+
+
+# Core Analytics:
+1. Business Intelligence
+   - Revenue analytics
+   - Attendance tracking
+   - Customer lifetime value
+   - Churn prediction
+   
+2. Operational Analytics
+   - Staff utilization
+   - Room/equipment usage
+   - Peak hour analysis
+   - Capacity planning
+   
+3. Customer Analytics
+   - Segmentation analysis
+   - Behavior tracking
+   - Engagement scores
+   - Retention analysis
+   
+4. Real-time Dashboards
+   - Live metrics
+   - Alerting system
+   - Custom reports
+   - Export functionality
+   
+5. Predictive Analytics
+   - Demand forecasting
+   - Recommendation engine
+   - Price optimization
+   - Risk assessment
+
+
+
+
+
+
+
+
+
+
+   
+
+{
+  "dependencies": {
+    "@nestjs/schedule": "^10.0.0",        // Scheduling
+    "@nestjs/throttler": "^5.0.0",        // Rate limiting
+    "@elastic/elasticsearch": "^8.0.0",   // Search
+    "ioredis": "^5.0.0",                  // Redis client
+    "amqplib": "^0.10.0",                 // RabbitMQ
+    "dayjs": "^1.11.0",                   // Date handling
+    "joi": "^17.0.0",                     // Validation
+    "uuid": "^9.0.0",                     // ID generation
+    "winston": "^3.0.0",                  // Logging
+    "@sentry/node": "^7.0.0"              // Error tracking
+  }
+}

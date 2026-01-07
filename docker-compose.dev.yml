@@ -1,0 +1,469 @@
+version: '3.8'
+
+networks:
+  yoga-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  mongodb_data:
+  rabbitmq_data:
+  minio_data:
+  prometheus_data:
+  grafana_data:
+
+services:
+  # ============ DATABASES ============
+  postgres:
+    image: postgres:15-alpine
+    container_name: yoga_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin123}
+      POSTGRES_MULTIPLE_DATABASES: ${POSTGRES_MULTIPLE_DATABASES}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/docker/databases/init-multiple-databases.sh:/docker-entrypoint-initdb.d/init-multiple-databases.sh
+    networks:
+      - yoga-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: yoga_redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redis123}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - yoga-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongodb:
+    image: mongo:6
+    container_name: yoga_mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-admin123}
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - yoga-network
+
+  # ============ MESSAGE QUEUE ============
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: yoga_rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-admin123}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - yoga-network
+
+  # ============ OBJECT STORAGE ============
+  minio:
+    image: minio/minio
+    container_name: yoga_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-admin123}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - yoga-network
+
+  # ============ MONITORING ============
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: yoga_prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infrastructure/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - yoga-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: yoga_grafana
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - yoga-network
+    depends_on:
+      - prometheus
+
+  # ============ API GATEWAY ============
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile.dev
+    container_name: yoga_api_gateway
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      USER_SERVICE_URL: http://user-service:3001
+      BOOKING_SERVICE_URL: http://booking-service:3002
+      YOGA_SERVICE_URL: http://yoga-service:3003
+      LIVE_SERVICE_URL: http://live-service:3004
+      ECOMMERCE_SERVICE_URL: http://ecommerce-service:3005
+      PAYMENT_SERVICE_URL: http://payment-service:3006
+      NOTIFICATION_SERVICE_URL: http://notification-service:3007
+      ANALYTICS_SERVICE_URL: http://analytics-service:3008
+      AI_GATEWAY_URL: http://ai-gateway:8001
+    networks:
+      - yoga-network
+    depends_on:
+      - user-service
+      - booking-service
+      - yoga-service
+    volumes:
+      - ./services/api-gateway:/app
+      - /app/node_modules
+
+  # ============ USER SERVICE ============
+  user-service:
+    build:
+      context: ./services/user-service
+      dockerfile: Dockerfile.dev
+    container_name: yoga_user_service
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin123}@postgres:5432/user_db
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis123}@redis:6379
+    networks:
+      - yoga-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./services/user-service:/app
+      - /app/node_modules
+
+  # ============ BOOKING SERVICE ============
+  booking-service:
+    build:
+      context: ./services/booking-service
+      dockerfile: Dockerfile.dev
+    container_name: yoga_booking_service
+    ports:
+      - "3002:3002"
+    environment:
+      NODE_ENV: development
+      PORT: 3002
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin123}@postgres:5432/booking_db
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD:-admin123}@rabbitmq:5672
+      USER_SERVICE_URL: http://user-service:3001
+      YOGA_SERVICE_URL: http://yoga-service:3003
+    networks:
+      - yoga-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+    volumes:
+      - ./services/booking-service:/app
+      - /app/node_modules
+
+  # ============ YOGA SERVICE ============
+  yoga-service:
+    build:
+      context: ./services/yoga-service
+      dockerfile: Dockerfile.dev
+    container_name: yoga_yoga_service
+    ports:
+      - "3003:3003"
+    environment:
+      NODE_ENV: development
+      PORT: 3003
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin123}@postgres:5432/yoga_db
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis123}@redis:6379
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-admin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-admin123}
+    networks:
+      - yoga-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+    volumes:
+      - ./services/yoga-service:/app
+      - /app/node_modules
+
+  # ============ LIVE STREAM SERVICE ============
+  live-service:
+    build:
+      context: ./services/live-service
+      dockerfile: Dockerfile.dev
+    container_name: yoga_live_service
+    ports:
+      - "3004:3004"
+      - "1935:1935"  # RTMP port for streaming
+      - "8000:8000"  # HLS port
+    environment:
+      NODE_ENV: development
+      PORT: 3004
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin123}@postgres:5432/live_db
+      STREAM_SECRET: ${STREAM_SECRET:-stream-secret-key}
+      RTMP_PORT: 1935
+      HLS_PORT: 8000
+    networks:
+      - yoga-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./services/live-service:/app
+      - /app/node_modules
+      - ./stream-recordings:/recordings
+
+  # ============ E-COMMERCE SERVICE ============
+  ecommerce-service:
+    build:
+      context: ./services/ecommerce-service
+      dockerfile: Dockerfile.dev
+    container_name: yoga_ecommerce_service
+    ports:
+      - "3005:3005"
+    environment:
+      NODE_ENV: development
+      PORT: 3005
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin123}@postgres:5432/ecommerce_db
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+    networks:
+      - yoga-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./services/ecommerce-service:/app
+      - /app/node_modules
+
+  # ============ PAYMENT SERVICE ============
+  payment-service:
+    build:
+      context: ./services/payment-service
+      dockerfile: Dockerfile.dev
+    container_name: yoga_payment_service
+    ports:
+      - "3006:3006"
+    environment:
+      PORT: 3006
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin123}@postgres:5432/payment_db
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis123}@redis:6379
+    networks:
+      - yoga-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./services/payment-service:/app
+
+  # ============ NOTIFICATION SERVICE ============
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile.dev
+    container_name: yoga_notification_service
+    ports:
+      - "3007:3007"
+    environment:
+      PORT: 3007
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD:-admin123}@rabbitmq:5672
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
+      TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER}
+    networks:
+      - yoga-network
+    depends_on:
+      rabbitmq:
+        condition: service_started
+    volumes:
+      - ./services/notification-service:/app
+
+  # ============ ANALYTICS SERVICE ============
+  analytics-service:
+    build:
+      context: ./services/analytics-service
+      dockerfile: Dockerfile.dev
+    container_name: yoga_analytics_service
+    ports:
+      - "3008:3008"
+    environment:
+      PORT: 3008
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin123}@postgres:5432/analytics_db
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis123}@redis:6379
+      CLICKHOUSE_URL: http://clickhouse:8123
+    networks:
+      - yoga-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./services/analytics-service:/app
+
+  # ============ FRONTEND ============
+  frontend:
+    build:
+      context: ./services/frontend
+      dockerfile: Dockerfile.dev
+    container_name: yoga_frontend
+    ports:
+      - "80:3000"
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:3000/api
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
+      NEXT_PUBLIC_WEBSOCKET_URL: ws://localhost:3004
+    networks:
+      - yoga-network
+    depends_on:
+      - api-gateway
+    volumes:
+      - ./services/frontend:/app
+      - /app/node_modules
+      - /app/.next
+
+  # ============ AI SERVICES ============
+  ai-gateway:
+    build:
+      context: ./ai/ai-gateway
+      dockerfile: Dockerfile.dev
+    container_name: yoga_ai_gateway
+    ports:
+      - "8001:8001"
+    environment:
+      PORT: 8001
+      AGENTIC_AI_URL: http://agentic-ai-service:8002
+      LLM_SERVICE_URL: http://llm-service:8003
+      VOICE_SERVICE_URL: http://voice-service:8005
+    networks:
+      - yoga-network
+    depends_on:
+      - agentic-ai-service
+      - llm-service
+    volumes:
+      - ./ai/ai-gateway:/app
+
+  agentic-ai-service:
+    build:
+      context: ./ai/agentic-ai-service
+      dockerfile: Dockerfile.dev
+    container_name: yoga_agentic_ai_service
+    ports:
+      - "8002:8002"
+    environment:
+      PORT: 8002
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin123}@postgres:5432/ai_db
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD:-admin123}@rabbitmq:5672
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      BOOKING_SERVICE_URL: http://booking-service:3002
+      YOGA_SERVICE_URL: http://yoga-service:3003
+    networks:
+      - yoga-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+    volumes:
+      - ./ai/agentic-ai-service:/app
+
+  llm-service:
+    build:
+      context: ./ai/llm-service
+      dockerfile: Dockerfile.dev
+    container_name: yoga_llm_service
+    ports:
+      - "8003:8003"
+    environment:
+      PORT: 8003
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      QDRANT_URL: http://qdrant:6333
+    networks:
+      - yoga-network
+    depends_on:
+      - qdrant
+    volumes:
+      - llm_models:/app/models
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: yoga_qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    networks:
+      - yoga-network
+
+  voice-service:
+    build:
+      context: ./ai/voice-service
+      dockerfile: Dockerfile.dev
+    container_name: yoga_voice_service
+    ports:
+      - "8005:8005"
+    environment:
+      PORT: 8005
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD:-admin123}@rabbitmq:5672
+    networks:
+      - yoga-network
+    depends_on:
+      - rabbitmq
+    volumes:
+      - ./ai/voice-service:/app

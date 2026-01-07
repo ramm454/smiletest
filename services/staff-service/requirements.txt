@@ -1,0 +1,27 @@
+Tech: NestJS, PostgreSQL, Redis
+Functions:
+
+// Core Staff Management:
+1. Staff Management
+   - Staff profiles
+   - Roles & permissions
+   - Availability tracking
+   - Performance reviews
+   
+2. Scheduling System (like cal.com)
+   - Calendar integration
+   - Shift management
+   - Time-off requests
+   - Schedule optimization
+   
+3. Payroll Management
+   - Time tracking
+   - Salary calculation
+   - Tax computation
+   - Payment processing
+   
+4. Task Management
+   - Task assignment
+   - Workload balancing
+   - Performance tracking
+   - Reporting

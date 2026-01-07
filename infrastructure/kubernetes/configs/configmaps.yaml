@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: yoga-spa
+data:
+  DATABASE_URL: "postgresql://admin:${DB_PASSWORD}@postgres-postgresql.yoga-spa.svc.cluster.local:5432/yoga_spa"
+  REDIS_URL: "redis://redis-master.yoga-spa.svc.cluster.local:6379"
+  RABBITMQ_URL: "amqp://admin:${RABBITMQ_PASSWORD}@rabbitmq.yoga-spa.svc.cluster.local:5672"
