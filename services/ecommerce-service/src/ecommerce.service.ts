@@ -19,6 +19,280 @@ const prisma = new PrismaClient();
 
 @Injectable()
 export class EcommerceService {
+  // Note: These services would be injected via constructor in real implementation
+  // For now, I'll add placeholder properties
+  private paymentService: any;
+  private shippingService: any;
+  private supplierService: any;
+  private fileUploadService: any; // Add file upload service
+
+  constructor() {
+    // In real implementation, these would be injected:
+    // constructor(
+    //   private paymentService: PaymentService,
+    //   private shippingService: ShippingService,
+    //   private supplierService: SupplierService,
+    //   private fileUploadService: FileUploadService
+    // ) {}
+    
+    // Placeholder initialization
+    this.paymentService = {
+      createPaymentIntent: () => ({ id: 'pi_123', client_secret: 'secret' }),
+      confirmPayment: () => ({ status: 'succeeded' }),
+      createRefund: () => ({ id: 're_123', status: 'succeeded' })
+    };
+    
+    this.shippingService = {
+      calculateShipping: () => ({ methods: [], estimatedCost: 0 }),
+      createShipment: () => ({ id: 'ship_123', trackingNumber: 'TRACK123' }),
+      trackShipment: () => ({ status: 'in_transit', location: 'Warehouse' })
+    };
+    
+    this.supplierService = {
+      createSupplier: (data) => ({ id: 'supp_123', ...data }),
+      getSuppliers: (filters) => ({ suppliers: [], total: 0 }),
+      createPurchaseOrder: (supplierId, items) => ({ id: 'po_123', status: 'pending' }),
+      receivePurchaseOrder: (poId, receivedItems) => ({ id: poId, status: 'received' }),
+      getInventoryTransactions: (filters) => ({ transactions: [], total: 0 }),
+      getLowStockAlerts: (threshold) => ({ alerts: [] })
+    };
+
+    // Placeholder for file upload service
+    this.fileUploadService = {
+      uploadMultipleImages: (files, productId, setFeatured) => {
+        // Simulate file upload
+        return files.map((file, index) => ({
+          id: `img_${Date.now()}_${index}`,
+          url: `https://storage.yogaspa.com/products/${productId}/${file.originalname}`,
+          thumbnailUrl: `https://storage.yogaspa.com/products/${productId}/thumbnails/${file.originalname}`,
+          altText: file.originalname,
+          displayOrder: index,
+          isFeatured: setFeatured && index === 0,
+          dimensions: '1920x1080',
+          fileSize: file.size,
+          mimeType: file.mimetype
+        }));
+      },
+      deleteImage: (url) => Promise.resolve(true)
+    };
+  }
+
+  // ============ PRODUCT IMAGE MANAGEMENT ============
+
+  async uploadProductImages(productId: string, files: Express.Multer.File[], setFeatured: boolean = false) {
+    // Check if product exists
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+    });
+
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+
+    // Upload images using file upload service
+    const uploadedImages = await this.fileUploadService.uploadMultipleImages(files, productId, setFeatured);
+
+    // Get current max display order
+    const currentImages = await prisma.productImage.findMany({
+      where: { productId },
+      orderBy: { displayOrder: 'desc' },
+      take: 1,
+    });
+
+    const startOrder = currentImages.length > 0 ? currentImages[0].displayOrder + 1 : 0;
+
+    // Save image metadata to database
+    const savedImages = [];
+    for (let i = 0; i < uploadedImages.length; i++) {
+      const uploadedImage = uploadedImages[i];
+      const imageData = {
+        productId,
+        url: uploadedImage.url,
+        thumbnailUrl: uploadedImage.thumbnailUrl,
+        altText: uploadedImage.altText || product.name,
+        displayOrder: startOrder + i,
+        isFeatured: setFeatured && i === 0,
+        fileSize: files[i].size,
+        mimeType: files[i].mimetype,
+        dimensions: uploadedImage.dimensions || null,
+      };
+
+      const savedImage = await prisma.productImage.create({
+        data: imageData,
+      });
+      savedImages.push(savedImage);
+
+      // If setting featured, update other images to not featured
+      if (setFeatured && i === 0) {
+        await prisma.productImage.updateMany({
+          where: {
+            productId,
+            id: { not: savedImage.id },
+          },
+          data: {
+            isFeatured: false,
+          },
+        });
+      }
+    }
+
+    // Update product's images array if it exists
+    if (product.images && Array.isArray(product.images)) {
+      const newImageUrls = savedImages.map(img => img.url);
+      await prisma.product.update({
+        where: { id: productId },
+        data: {
+          images: [...product.images, ...newImageUrls],
+        },
+      });
+    }
+
+    return savedImages;
+  }
+
+  async deleteProductImage(imageId: string) {
+    const image = await prisma.productImage.findUnique({
+      where: { id: imageId },
+    });
+
+    if (!image) {
+      throw new NotFoundException('Image not found');
+    }
+
+    // Delete from storage
+    await this.fileUploadService.deleteImage(image.url);
+    if (image.thumbnailUrl) {
+      await this.fileUploadService.deleteImage(image.thumbnailUrl);
+    }
+
+    // If this is the featured image, set another image as featured
+    if (image.isFeatured) {
+      const otherImage = await prisma.productImage.findFirst({
+        where: {
+          productId: image.productId,
+          id: { not: imageId },
+        },
+        orderBy: { displayOrder: 'asc' },
+      });
+
+      if (otherImage) {
+        await prisma.productImage.update({
+          where: { id: otherImage.id },
+          data: { isFeatured: true },
+        });
+      }
+    }
+
+    // Delete from database
+    await prisma.productImage.delete({
+      where: { id: imageId },
+    });
+
+    // Update product's images array if it exists
+    const product = await prisma.product.findUnique({
+      where: { id: image.productId },
+      select: { images: true },
+    });
+
+    if (product && product.images && Array.isArray(product.images)) {
+      const updatedImages = product.images.filter(imgUrl => imgUrl !== image.url);
+      await prisma.product.update({
+        where: { id: image.productId },
+        data: {
+          images: updatedImages,
+        },
+      });
+    }
+
+    return { success: true, message: 'Image deleted successfully' };
+  }
+
+  async getProductImages(productId: string) {
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+    });
+
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+
+    const images = await prisma.productImage.findMany({
+      where: { productId },
+      orderBy: { displayOrder: 'asc' },
+    });
+
+    return images;
+  }
+
+  async updateProductImageOrder(productId: string, imageOrder: Array<{ id: string; displayOrder: number }>) {
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+    });
+
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+
+    // Validate all images belong to the product
+    const imageIds = imageOrder.map(item => item.id);
+    const imagesCount = await prisma.productImage.count({
+      where: {
+        id: { in: imageIds },
+        productId,
+      },
+    });
+
+    if (imagesCount !== imageOrder.length) {
+      throw new BadRequestException('Some images do not belong to this product');
+    }
+
+    // Update display orders
+    const updatePromises = imageOrder.map(item =>
+      prisma.productImage.update({
+        where: { id: item.id },
+        data: { displayOrder: item.displayOrder },
+      })
+    );
+
+    await Promise.all(updatePromises);
+
+    return this.getProductImages(productId);
+  }
+
+  async setFeaturedImage(productId: string, imageId: string) {
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+    });
+
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+
+    const image = await prisma.productImage.findUnique({
+      where: { id: imageId },
+    });
+
+    if (!image || image.productId !== productId) {
+      throw new NotFoundException('Image not found for this product');
+    }
+
+    // Set all images to not featured
+    await prisma.productImage.updateMany({
+      where: { productId },
+      data: { isFeatured: false },
+    });
+
+    // Set the specified image as featured
+    const updatedImage = await prisma.productImage.update({
+      where: { id: imageId },
+      data: { isFeatured: true },
+    });
+
+    return updatedImage;
+  }
+
+  // ============ END OF PRODUCT IMAGE METHODS ============
+
   // Product Management
   async createProduct(createProductDto: CreateProductDto) {
     // Generate slug if not provided
@@ -53,6 +327,9 @@ export class EcommerceService {
       include: {
         category: true,
         variants: true,
+        productImages: {
+          orderBy: { displayOrder: 'asc' },
+        },
         reviews: {
           where: { status: 'APPROVED' },
           take: 10,
@@ -89,6 +366,9 @@ export class EcommerceService {
       include: {
         category: true,
         variants: true,
+        productImages: {
+          orderBy: { displayOrder: 'asc' },
+        },
         reviews: {
           where: { status: 'APPROVED' },
           take: 5,
@@ -171,6 +451,10 @@ export class EcommerceService {
         include: {
           category: true,
           variants: true,
+          productImages: {
+            where: { isFeatured: true },
+            take: 1,
+          },
           _count: {
             select: {
               reviews: true,
@@ -217,6 +501,7 @@ export class EcommerceService {
       where: { id: productId },
       include: {
         variants: true,
+        productImages: true,
         cartItems: true,
         orderItems: true,
       },
@@ -229,6 +514,16 @@ export class EcommerceService {
     // Check if product has orders
     if (product.orderItems.length > 0) {
       throw new BadRequestException('Cannot delete product with existing orders');
+    }
+
+    // Delete product images from storage
+    if (product.productImages && product.productImages.length > 0) {
+      for (const image of product.productImages) {
+        await this.fileUploadService.deleteImage(image.url);
+        if (image.thumbnailUrl) {
+          await this.fileUploadService.deleteImage(image.thumbnailUrl);
+        }
+      }
     }
 
     // Archive instead of delete
@@ -269,6 +564,10 @@ export class EcommerceService {
           orderBy: { createdAt: 'desc' },
           include: {
             variants: true,
+            productImages: {
+              where: { isFeatured: true },
+              take: 1,
+            },
             _count: {
               select: {
                 reviews: true,
@@ -348,7 +647,14 @@ export class EcommerceService {
         include: {
           items: {
             include: {
-              product: true,
+              product: {
+                include: {
+                  productImages: {
+                    where: { isFeatured: true },
+                    take: 1,
+                  },
+                },
+              },
               variant: true,
             },
           },
@@ -360,7 +666,14 @@ export class EcommerceService {
         include: {
           items: {
             include: {
-              product: true,
+              product: {
+                include: {
+                  productImages: {
+                    where: { isFeatured: true },
+                    take: 1,
+                  },
+                },
+              },
               variant: true,
             },
           },
@@ -381,7 +694,14 @@ export class EcommerceService {
         include: {
           items: {
             include: {
-              product: true,
+              product: {
+                include: {
+                  productImages: {
+                    where: { isFeatured: true },
+                    take: 1,
+                  },
+                },
+              },
               variant: true,
             },
           },
@@ -794,7 +1114,14 @@ export class EcommerceService {
       include: {
         items: {
           include: {
-            product: true,
+            product: {
+              include: {
+                productImages: {
+                  where: { isFeatured: true },
+                  take: 1,
+                },
+              },
+            },
             variant: true,
           },
         },
@@ -822,7 +1149,14 @@ export class EcommerceService {
       include: {
         items: {
           include: {
-            product: true,
+            product: {
+              include: {
+                productImages: {
+                  where: { isFeatured: true },
+                  take: 1,
+                },
+              },
+            },
             variant: true,
           },
         },
@@ -863,7 +1197,14 @@ export class EcommerceService {
           items: {
             take: 2,
             include: {
-              product: true,
+              product: {
+                include: {
+                  productImages: {
+                    where: { isFeatured: true },
+                    take: 1,
+                  },
+                },
+              },
             },
           },
         },
@@ -1070,7 +1411,14 @@ export class EcommerceService {
       include: {
         items: {
           include: {
-            product: true,
+            product: {
+              include: {
+                productImages: {
+                  where: { isFeatured: true },
+                  take: 1,
+                },
+              },
+            },
             variant: true,
           },
         },
@@ -1083,7 +1431,14 @@ export class EcommerceService {
         include: {
           items: {
             include: {
-              product: true,
+              product: {
+                include: {
+                  productImages: {
+                    where: { isFeatured: true },
+                    take: 1,
+                  },
+                },
+              },
               variant: true,
             },
           },
@@ -1267,6 +1622,594 @@ export class EcommerceService {
     };
   }
 
+  // ============ NEWLY ADDED METHODS ============
+
+  // Payment methods
+  async createPaymentIntent(orderId: string, amount: number, currency: string = 'usd') {
+    // Validate order exists
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    // Check if order already has payment
+    if (order.paymentStatus === 'PAID') {
+      throw new BadRequestException('Order is already paid');
+    }
+
+    // Create payment intent using payment service
+    const paymentIntent = await this.paymentService.createPaymentIntent(orderId, amount, currency);
+    
+    // Update order with payment intent
+    await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        paymentIntentId: paymentIntent.id,
+        paymentStatus: 'PENDING',
+      },
+    });
+
+    return paymentIntent;
+  }
+
+  async confirmPayment(paymentIntentId: string) {
+    const order = await prisma.order.findFirst({
+      where: { paymentIntentId },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found for this payment intent');
+    }
+
+    const paymentResult = await this.paymentService.confirmPayment(paymentIntentId);
+    
+    if (paymentResult.status === 'succeeded') {
+      await prisma.order.update({
+        where: { id: order.id },
+        data: {
+          paymentStatus: 'PAID',
+          paidAt: new Date(),
+          status: 'CONFIRMED', // Move order to confirmed status
+        },
+      });
+    }
+
+    return paymentResult;
+  }
+
+  async createRefund(paymentIntentId: string, amount?: number) {
+    const order = await prisma.order.findFirst({
+      where: { paymentIntentId },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found for this payment intent');
+    }
+
+    // Check if order can be refunded
+    if (!['PAID', 'PARTIALLY_REFUNDED'].includes(order.paymentStatus)) {
+      throw new BadRequestException('Order cannot be refunded');
+    }
+
+    const refundResult = await this.paymentService.createRefund(paymentIntentId, amount);
+    
+    if (refundResult.status === 'succeeded') {
+      const refundAmount = amount || order.totalAmount;
+      const newPaymentStatus = amount && amount < order.totalAmount 
+        ? 'PARTIALLY_REFUNDED' 
+        : 'REFUNDED';
+
+      await prisma.order.update({
+        where: { id: order.id },
+        data: {
+          paymentStatus: newPaymentStatus,
+          refundedAmount: {
+            increment: refundAmount,
+          },
+          refundedAt: new Date(),
+        },
+      });
+    }
+
+    return refundResult;
+  }
+
+  // Shipping methods
+  async calculateShipping(address: any, items: any[]) {
+    if (!address || !items || items.length === 0) {
+      throw new BadRequestException('Address and items are required');
+    }
+
+    // Calculate total weight and dimensions
+    let totalWeight = 0;
+    let totalValue = 0;
+    let isFragile = false;
+    let isInternational = address.country !== 'US'; // Example
+
+    for (const item of items) {
+      const product = await prisma.product.findUnique({
+        where: { id: item.productId },
+      });
+
+      if (product) {
+        totalWeight += product.weight * item.quantity;
+        totalValue += product.price * item.quantity;
+        if (product.isFragile) isFragile = true;
+      }
+    }
+
+    // Prepare shipping request
+    const shippingRequest = {
+      address,
+      totalWeight,
+      totalValue,
+      isFragile,
+      isInternational,
+      itemCount: items.length,
+    };
+
+    return this.shippingService.calculateShipping(shippingRequest);
+  }
+
+  async createShipment(orderId: string, shippingMethod: any) {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { items: true },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    if (order.status !== 'CONFIRMED' && order.status !== 'PROCESSING') {
+      throw new BadRequestException(`Order cannot be shipped in ${order.status} status`);
+    }
+
+    const shipment = await this.shippingService.createShipment(orderId, {
+      ...shippingMethod,
+      orderNumber: order.orderNumber,
+      shippingAddress: order.shippingAddress,
+      items: order.items,
+    });
+
+    // Update order with shipment info
+    await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        status: 'SHIPPED',
+        shippingMethod: shippingMethod.name,
+        shippingCost: shippingMethod.cost,
+        trackingNumber: shipment.trackingNumber,
+        shippedAt: new Date(),
+      },
+    });
+
+    return shipment;
+  }
+
+  async trackShipment(trackingNumber: string) {
+    if (!trackingNumber) {
+      throw new BadRequestException('Tracking number is required');
+    }
+
+    const order = await prisma.order.findFirst({
+      where: { trackingNumber },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found for this tracking number');
+    }
+
+    return this.shippingService.trackShipment(trackingNumber);
+  }
+
+  // Supplier methods
+  async createSupplier(data: any) {
+    // Validate required fields
+    if (!data.name || !data.email) {
+      throw new BadRequestException('Supplier name and email are required');
+    }
+
+    // Check if supplier already exists
+    const existingSupplier = await prisma.supplier.findUnique({
+      where: { email: data.email },
+    });
+
+    if (existingSupplier) {
+      throw new ConflictException('Supplier with this email already exists');
+    }
+
+    return this.supplierService.createSupplier(data);
+  }
+
+  async listSuppliers(filters: any) {
+    const { search, page = 1, limit = 20 } = filters;
+    const skip = (page - 1) * limit;
+
+    const where: any = {};
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { company: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [suppliers, total] = await Promise.all([
+      prisma.supplier.findMany({
+        where,
+        include: {
+          _count: {
+            select: {
+              products: true,
+              purchaseOrders: true,
+            },
+          },
+        },
+        skip,
+        take: limit,
+        orderBy: { name: 'asc' },
+      }),
+      prisma.supplier.count({ where }),
+    ]);
+
+    return {
+      suppliers,
+      pagination: {
+        total,
+        page: parseInt(page.toString()),
+        limit: parseInt(limit.toString()),
+        pages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async createPurchaseOrder(supplierId: string, items: any[]) {
+    if (!items || items.length === 0) {
+      throw new BadRequestException('Purchase order items are required');
+    }
+
+    // Validate supplier exists
+    const supplier = await prisma.supplier.findUnique({
+      where: { id: supplierId },
+    });
+
+    if (!supplier) {
+      throw new NotFoundException('Supplier not found');
+    }
+
+    // Calculate totals
+    let subtotal = 0;
+    for (const item of items) {
+      const product = await prisma.product.findUnique({
+        where: { id: item.productId },
+      });
+
+      if (product) {
+        item.unitPrice = product.costPrice || product.price * 0.6; // 40% margin
+        item.totalPrice = item.unitPrice * item.quantity;
+        subtotal += item.totalPrice;
+      }
+    }
+
+    const tax = subtotal * 0.1; // 10% tax
+    const shipping = 50; // Fixed shipping cost
+    const total = subtotal + tax + shipping;
+
+    // Generate PO number
+    const poNumber = `PO-${Date.now().toString().substring(5)}`;
+
+    // Create purchase order
+    const purchaseOrder = await prisma.purchaseOrder.create({
+      data: {
+        poNumber,
+        supplierId,
+        status: 'PENDING',
+        subtotal,
+        tax,
+        shipping,
+        total,
+        expectedDelivery: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
+      },
+    });
+
+    // Create purchase order items
+    for (const item of items) {
+      await prisma.purchaseOrderItem.create({
+        data: {
+          purchaseOrderId: purchaseOrder.id,
+          productId: item.productId,
+          variantId: item.variantId,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          totalPrice: item.totalPrice,
+        },
+      });
+    }
+
+    return this.supplierService.createPurchaseOrder(supplierId, {
+      ...purchaseOrder,
+      items,
+    });
+  }
+
+  async receivePurchaseOrder(poId: string, receivedItems: any[]) {
+    const purchaseOrder = await prisma.purchaseOrder.findUnique({
+      where: { id: poId },
+      include: { items: true },
+    });
+
+    if (!purchaseOrder) {
+      throw new NotFoundException('Purchase order not found');
+    }
+
+    if (purchaseOrder.status === 'RECEIVED') {
+      throw new BadRequestException('Purchase order already received');
+    }
+
+    // Update inventory
+    for (const receivedItem of receivedItems) {
+      const poItem = purchaseOrder.items.find(item => item.id === receivedItem.itemId);
+      if (poItem) {
+        const quantity = receivedItem.quantity || poItem.quantity;
+        
+        if (poItem.variantId) {
+          await prisma.productVariant.update({
+            where: { id: poItem.variantId },
+            data: {
+              stockQuantity: { increment: quantity },
+            },
+          });
+        } else {
+          await prisma.product.update({
+            where: { id: poItem.productId },
+            data: {
+              stockQuantity: { increment: quantity },
+            },
+          });
+        }
+
+        // Create inventory transaction
+        await prisma.inventoryTransaction.create({
+          data: {
+            productId: poItem.productId,
+            variantId: poItem.variantId,
+            type: 'PURCHASE',
+            quantity,
+            unitCost: poItem.unitPrice,
+            totalCost: poItem.unitPrice * quantity,
+            reference: purchaseOrder.poNumber,
+            notes: `Received from PO ${purchaseOrder.poNumber}`,
+          },
+        });
+      }
+    }
+
+    // Update purchase order status
+    await prisma.purchaseOrder.update({
+      where: { id: poId },
+      data: {
+        status: 'RECEIVED',
+        receivedAt: new Date(),
+      },
+    });
+
+    return this.supplierService.receivePurchaseOrder(poId, receivedItems);
+  }
+
+  // Inventory methods
+  async getInventoryTransactions(filters: any) {
+    const {
+      productId,
+      variantId,
+      type,
+      startDate,
+      endDate,
+      page = 1,
+      limit = 50,
+    } = filters;
+
+    const skip = (page - 1) * limit;
+    const where: any = {};
+
+    if (productId) where.productId = productId;
+    if (variantId) where.variantId = variantId;
+    if (type) where.type = type;
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate);
+      if (endDate) where.createdAt.lte = new Date(endDate);
+    }
+
+    const [transactions, total] = await Promise.all([
+      prisma.inventoryTransaction.findMany({
+        where,
+        include: {
+          product: true,
+          variant: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.inventoryTransaction.count({ where }),
+    ]);
+
+    return {
+      transactions,
+      pagination: {
+        total,
+        page: parseInt(page.toString()),
+        limit: parseInt(limit.toString()),
+        pages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async getLowStockAlerts(threshold: number = 10) {
+    const products = await prisma.product.findMany({
+      where: {
+        trackInventory: true,
+        stockQuantity: {
+          gt: 0,
+          lte: threshold,
+        },
+        status: {
+          not: 'DISCONTINUED',
+        },
+      },
+      include: {
+        category: true,
+        variants: {
+          where: {
+            trackInventory: true,
+            stockQuantity: {
+              gt: 0,
+              lte: threshold,
+            },
+          },
+        },
+      },
+      orderBy: { stockQuantity: 'asc' },
+    });
+
+    const variants = await prisma.productVariant.findMany({
+      where: {
+        trackInventory: true,
+        stockQuantity: {
+          gt: 0,
+          lte: threshold,
+        },
+        product: {
+          status: {
+            not: 'DISCONTINUED',
+          },
+        },
+      },
+      include: {
+        product: true,
+      },
+      orderBy: { stockQuantity: 'asc' },
+    });
+
+    return {
+      products,
+      variants,
+      totalAlerts: products.length + variants.length,
+    };
+  }
+
+  // Analytics methods
+  async getProductAnalytics(filters: any) {
+    const { startDate, endDate, groupBy = 'month' } = filters;
+    
+    const where: any = {
+      status: { in: ['DELIVERED', 'COMPLETED'] },
+    };
+    
+    if (startDate) where.createdAt.gte = new Date(startDate);
+    if (endDate) where.createdAt.lte = new Date(endDate);
+    
+    const orders = await prisma.order.findMany({
+      where,
+      include: {
+        items: {
+          include: {
+            product: true,
+          },
+        },
+      },
+    });
+    
+    // Aggregate product sales
+    const productSales: Record<string, any> = {};
+    const categorySales: Record<string, any> = {};
+    
+    orders.forEach(order => {
+      order.items.forEach(item => {
+        // Product sales
+        if (!productSales[item.productId]) {
+          productSales[item.productId] = {
+            productId: item.productId,
+            name: item.name,
+            totalSales: 0,
+            totalQuantity: 0,
+            totalRevenue: 0,
+          };
+        }
+        productSales[item.productId].totalSales++;
+        productSales[item.productId].totalQuantity += item.quantity;
+        productSales[item.productId].totalRevenue += item.totalPrice;
+        
+        // Category sales
+        if (item.product.categoryId) {
+          if (!categorySales[item.product.categoryId]) {
+            categorySales[item.product.categoryId] = {
+              totalRevenue: 0,
+              totalOrders: 0,
+            };
+          }
+          categorySales[item.product.categoryId].totalRevenue += item.totalPrice;
+          categorySales[item.product.categoryId].totalOrders++;
+        }
+      });
+    });
+    
+    return {
+      topProducts: Object.values(productSales)
+        .sort((a: any, b: any) => b.totalRevenue - a.totalRevenue)
+        .slice(0, 10),
+      categoryPerformance: categorySales,
+      totalOrders: orders.length,
+      totalRevenue: orders.reduce((sum, order) => sum + order.totalAmount, 0),
+    };
+  }
+
+  async getInventoryAnalytics() {
+    const totalProducts = await prisma.product.count();
+    const outOfStock = await prisma.product.count({
+      where: {
+        trackInventory: true,
+        stockQuantity: { lte: 0 },
+      },
+    });
+    
+    const lowStock = await prisma.product.count({
+      where: {
+        trackInventory: true,
+        stockQuantity: { 
+          gt: 0,
+          lte: 10, // Default threshold
+        },
+      },
+    });
+    
+    const inventoryValue = await prisma.$queryRaw`
+      SELECT SUM(p.stock_quantity * COALESCE(p.cost_price, p.price * 0.6)) as total_value
+      FROM products p
+      WHERE p.track_inventory = true
+    `;
+    
+    return {
+      summary: {
+        totalProducts,
+        outOfStock,
+        lowStock,
+        inStock: totalProducts - outOfStock,
+        inventoryValue: inventoryValue[0]?.total_value || 0,
+      },
+      metrics: {
+        stockTurnover: await this.calculateStockTurnover(),
+        inventoryAge: await this.calculateInventoryAge(),
+      },
+    };
+  }
+
+  // ============ END OF NEW METHODS ============
+
   // Helper Methods
   private async createProductVariants(productId: string, variants: any[]) {
     for (const variant of variants) {
@@ -1288,6 +2231,9 @@ export class EcommerceService {
       include: {
         category: true,
         variants: true,
+        productImages: {
+          orderBy: { displayOrder: 'asc' },
+        },
         reviews: {
           where: { status: 'APPROVED' },
           take: 5,
@@ -1317,7 +2263,14 @@ export class EcommerceService {
       include: {
         items: {
           include: {
-            product: true,
+            product: {
+              include: {
+                productImages: {
+                  where: { isFeatured: true },
+                  take: 1,
+                },
+              },
+            },
             variant: true,
           },
         },
@@ -1331,7 +2284,14 @@ export class EcommerceService {
       include: {
         items: {
           include: {
-            product: true,
+            product: {
+              include: {
+                productImages: {
+                  where: { isFeatured: true },
+                  take: 1,
+                },
+              },
+            },
             variant: true,
           },
         },
@@ -1423,7 +2383,7 @@ export class EcommerceService {
   }
 
   private groupOrdersByPeriod(orders: any[], groupBy: string) {
-    const groups = {};
+    const groups: Record<string, any> = {};
     
     orders.forEach(order => {
       const date = new Date(order.createdAt);
@@ -1458,6 +2418,61 @@ export class EcommerceService {
     });
     
     return Object.values(groups);
+  }
+
+  private async calculateStockTurnover() {
+    // Calculate stock turnover ratio
+    const lastMonth = new Date();
+    lastMonth.setMonth(lastMonth.getMonth() - 1);
+    
+    const salesLastMonth = await prisma.orderItem.aggregate({
+      where: {
+        order: {
+          status: { in: ['DELIVERED', 'COMPLETED'] },
+          createdAt: { gte: lastMonth },
+        },
+      },
+      _sum: {
+        quantity: true,
+        totalPrice: true,
+      },
+    });
+    
+    const avgInventory = await prisma.$queryRaw`
+      SELECT AVG(stock_quantity) as avg_inventory
+      FROM products
+      WHERE track_inventory = true
+    `;
+    
+    const turnover = salesLastMonth._sum.quantity / ((avgInventory as any)[0]?.avg_inventory || 1);
+    return turnover.toFixed(2);
+  }
+
+  private async calculateInventoryAge() {
+    // Calculate average inventory age
+    const products = await prisma.product.findMany({
+      where: { trackInventory: true },
+      select: { 
+        stockQuantity: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+    
+    if (products.length === 0) return "0";
+    
+    const now = new Date();
+    let totalDays = 0;
+    let totalQuantity = 0;
+    
+    products.forEach(product => {
+      const lastUpdate = product.updatedAt || product.createdAt;
+      const ageInDays = (now.getTime() - lastUpdate.getTime()) / (1000 * 60 * 60 * 24);
+      totalDays += ageInDays * product.stockQuantity;
+      totalQuantity += product.stockQuantity;
+    });
+    
+    return totalQuantity > 0 ? (totalDays / totalQuantity).toFixed(1) : '0';
   }
 
   private generateSlug(name: string): string {

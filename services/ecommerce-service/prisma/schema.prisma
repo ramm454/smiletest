@@ -7,6 +7,216 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+
+
+// Add to your existing schema
+model ProductImage {
+  id          String   @id @default(uuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  // Image URLs
+  url         String
+  thumbnailUrl String?
+  mediumUrl   String?
+  
+  // Image metadata
+  altText     String?
+  isFeatured  Boolean  @default(false)
+  displayOrder Int     @default(0)
+  
+  // Dimensions
+  width       Int?
+  height      Int?
+  size        Int?     // in bytes
+  format      String?  // jpg, png, webp
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([productId])
+  @@index([isFeatured])
+  @@index([displayOrder])
+}
+
+// Add these models to your existing schema.prisma
+
+model Payment {
+  id              String    @id @default(uuid())
+  orderId         String
+  order           Order     @relation(fields: [orderId], references: [id])
+  amount          Float
+  currency        String    @default("USD")
+  paymentMethod   String?   // card, paypal, etc
+  paymentGateway  String?   // stripe, paypal, etc
+  paymentIntentId String?   @unique
+  clientSecret    String?
+  transactionId   String?
+  status          PaymentStatus @default(PENDING)
+  paidAt          DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  refunds         Refund[]
+
+  @@index([orderId])
+  @@index([paymentIntentId])
+  @@index([status])
+}
+
+model Refund {
+  id              String    @id @default(uuid())
+  orderId         String
+  order           Order     @relation(fields: [orderId], references: [id])
+  paymentId       String
+  payment         Payment   @relation(fields: [paymentId], references: [id])
+  amount          Float
+  currency        String    @default("USD")
+  refundId        String?   @unique // External refund ID
+  reason          String?
+  status          RefundStatus @default(PENDING)
+  processedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([orderId])
+  @@index([paymentId])
+  @@index([status])
+}
+
+model Shipment {
+  id                String    @id @default(uuid())
+  orderId           String
+  order             Order     @relation(fields: [orderId], references: [id])
+  trackingNumber    String    @unique
+  carrier           String
+  service           String
+  shippingCost      Float
+  estimatedDelivery DateTime?
+  actualDelivery    DateTime?
+  status            ShipmentStatus @default(PENDING)
+  labelUrl          String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([orderId])
+  @@index([trackingNumber])
+  @@index([status])
+}
+
+model Supplier {
+  id            String    @id @default(uuid())
+  name          String
+  email         String?
+  phone         String?
+  address       Json?
+  taxId         String?
+  contactPerson String?
+  paymentTerms  String?   @default("NET30")
+  minimumOrder  Float?    @default(0)
+  leadTime      Int?      @default(7) // days
+  status        SupplierStatus @default(ACTIVE)
+  notes         String?
+
+  products      Product[]
+  purchaseOrders PurchaseOrder[]
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([name])
+  @@index([email])
+  @@index([status])
+}
+
+model PurchaseOrder {
+  id                String    @id @default(uuid())
+  supplierId        String
+  supplier          Supplier  @relation(fields: [supplierId], references: [id])
+  poNumber          String    @unique
+  items             Json      // Array of {productId, quantity, unitPrice, total, expectedDelivery}
+  subtotal          Float
+  tax               Float     @default(0.0)
+  totalAmount       Float
+  status            POStatus  @default(PENDING)
+  expectedDelivery  DateTime?
+  receivedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([supplierId])
+  @@index([poNumber])
+  @@index([status])
+  @@index([expectedDelivery])
+}
+
+model InventoryTransaction {
+  id          String    @id @default(uuid())
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id])
+  type        InventoryTransactionType
+  quantity    Int
+  unitCost    Float?
+  referenceId String?   // PO ID, Order ID, etc
+  notes       String?
+  createdAt   DateTime  @default(now())
+
+  @@index([productId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+// Add these enums to your existing enums
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum RefundStatus {
+  PENDING
+  PROCESSED
+  FAILED
+}
+
+enum ShipmentStatus {
+  PENDING
+  PROCESSED
+  IN_TRANSIT
+  DELIVERED
+  RETURNED
+}
+
+enum SupplierStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum POStatus {
+  PENDING
+  APPROVED
+  ORDERED
+  PARTIALLY_RECEIVED
+  COMPLETED
+  CANCELLED
+}
+
+enum InventoryTransactionType {
+  PURCHASE
+  SALE
+  RETURN
+  ADJUSTMENT
+  DAMAGE
+  TRANSFER
+}
+
+
+
 model Product {
   id                String    @id @default(uuid())
   

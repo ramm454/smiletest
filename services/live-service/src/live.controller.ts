@@ -21,9 +21,22 @@ import {
 } from './dto/live.dto';
 import { AuthGuard } from './guards/auth.guard';
 
+// Add these imports
+import { BreakoutRoomService } from './services/breakout-room.service';
+import { RecordingManagementService } from './services/recording-management.service';
+import { QualityMonitorService } from './services/quality-monitor.service';
+import { TranscriptionService } from './services/transcription.service';
+
 @Controller('live')
 export class LiveController {
-  constructor(private readonly liveService: LiveService) {}
+  // Add to constructor
+  constructor(
+    private readonly liveService: LiveService,
+    private readonly breakoutRoomService: BreakoutRoomService,
+    private readonly recordingManagementService: RecordingManagementService,
+    private readonly qualityMonitorService: QualityMonitorService,
+    private readonly transcriptionService: TranscriptionService,
+  ) {}
 
   @Get('health')
   async healthCheck() {
@@ -246,5 +259,99 @@ export class LiveController {
       location: session.streamUrl,
       timezone: session.timezone,
     };
+  }
+
+  // Add these endpoints:
+
+  // Breakout Rooms
+  @Post('sessions/:id/breakout-rooms')
+  @UseGuards(AuthGuard)
+  async createBreakoutRoom(
+    @Param('id') id: string,
+    @Body() createDto: any,
+    @Headers('x-user-id') userId: string,
+  ) {
+    return this.breakoutRoomService.createBreakoutRoom({
+      ...createDto,
+      sessionId: id,
+    }, userId);
+  }
+
+  @Get('sessions/:id/breakout-rooms')
+  @UseGuards(AuthGuard)
+  async getBreakoutRooms(@Param('id') id: string) {
+    return this.breakoutRoomService.getSessionBreakoutRooms(id);
+  }
+
+  // Recording Management
+  @Put('recordings/:id/edit')
+  @UseGuards(AuthGuard)
+  async editRecording(
+    @Param('id') id: string,
+    @Body() editDto: any,
+    @Headers('x-user-id') userId: string,
+  ) {
+    return this.recordingManagementService.editRecording(id, editDto);
+  }
+
+  @Post('recordings/:id/thumbnail')
+  @UseGuards(AuthGuard)
+  async generateThumbnail(
+    @Param('id') id: string,
+    @Body() generateDto: any,
+    @Headers('x-user-id') userId: string,
+  ) {
+    return this.recordingManagementService.generateThumbnail(id, generateDto);
+  }
+
+  // Quality Monitoring
+  @Post('sessions/:id/quality-metrics')
+  async logQualityMetrics(
+    @Param('id') id: string,
+    @Body() metrics: any,
+    @Headers('x-user-id') userId: string,
+  ) {
+    return this.qualityMonitorService.logQualityMetrics(id, userId, metrics);
+  }
+
+  @Get('sessions/:id/quality-report')
+  @UseGuards(AuthGuard)
+  async getQualityReport(@Param('id') id: string) {
+    return this.qualityMonitorService.getSessionQualityReport(id);
+  }
+
+  // Transcription
+  @Post('sessions/:id/transcription')
+  @UseGuards(AuthGuard)
+  async startTranscription(
+    @Param('id') id: string,
+    @Body() body: { recordingId?: string },
+  ) {
+    return this.transcriptionService.startTranscription(id, body.recordingId);
+  }
+
+  @Get('transcriptions/:id')
+  async getTranscription(@Param('id') id: string) {
+    return this.transcriptionService.getTranscription(id);
+  }
+
+  // Session Templates
+  @Post('templates')
+  @UseGuards(AuthGuard)
+  async createTemplate(
+    @Body() templateDto: any,
+    @Headers('x-user-id') userId: string,
+  ) {
+    return this.liveService.createSessionTemplate(templateDto, userId);
+  }
+
+  @Post('templates/:id/apply')
+  @UseGuards(AuthGuard)
+  async applyTemplate(
+    @Param('id') id: string,
+    @Body() applyDto: any,
+    @Headers('x-user-id') userId: string,
+  ) {
+    return this.liveService.applySessionTemplate(id, userId, applyDto);
   }
 }

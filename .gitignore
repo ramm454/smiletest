@@ -1,11 +1,23 @@
+# scripts and test 
+scripts-main/
+scripts/
+
+
 # Dependencies
 node_modules/
+*/node_modules/
+*/*/node_modules/
+*/*/*/node_modules/
 __pycache__/
 *.pyc
 
 # Environment
 .env
-.env.example 
+.env.example
+*/.env.example
+*/*/.env.example 
+
+
 .env.local
 .env.development.local
 .env.test.local
@@ -60,9 +72,6 @@ build/
 *.key
 secrets/
 credentials/
-
-
-
 
 
 

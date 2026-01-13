@@ -9,13 +9,18 @@
     "target": "ES2021",
     "sourceMap": true,
     "outDir": "./dist",
-    "baseDir": "./",
+    "baseUrl": "./",
     "incremental": true,
     "skipLibCheck": true,
     "strictNullChecks": false,
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "forceConsistentCasingInFileNames": false,
-    "noFallthroughCasesInSwitch": false
+    "noFallthroughCasesInSwitch": false,
+    "paths": {
+      "@yogaspa/shared-auth": ["../../packages/shared-auth/src"],
+      "@yogaspa/shared-types": ["../../packages/shared-types/src"],
+      "@yogaspa/event-bus": ["../../packages/event-bus/src"]
+    }
   }
 }

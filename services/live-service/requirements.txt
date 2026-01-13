@@ -30,3 +30,55 @@ Functions:
    - Adaptive bitrate
    - Network optimization
    - Fallback mechanisms
+
+
+
+   text
+services/live-service/src/dto/
+  - moderation.dto.ts
+  - analytics.dto.ts
+  - payment.dto.ts
+  - mobile.dto.ts
+  - social.dto.ts
+  - accessibility.dto.ts
+  - security.dto.ts
+
+services/live-service/src/services/
+  - moderation.service.ts
+  - analytics.service.ts
+  - payment-integration.service.ts
+  - mobile.service.ts
+  - social.service.ts
+  - accessibility.service.ts
+  - security.service.ts
+
+services/live-service/src/controllers/
+  - mobile.controller.ts
+  - moderation.controller.ts
+  - analytics.controller.ts
+  - payment.controller.ts
+
+services/frontend/components/live/
+  - ModerationPanel.tsx
+  - AnalyticsDashboard.tsx
+  - PaymentModal.tsx
+  - MobileView.tsx
+  - SocialShare.tsx
+  - AccessibilityPanel.tsx
+
+tests/
+  - live-service.e2e.test.ts
+  - integration/
+  - load-tests/
+  - security/
+
+scripts/
+  - complete-test-suite.sh
+  - deploy-production.sh
+  - security-scan.sh
+  - load-test.sh
+
+infrastructure/
+  - monitoring/alerts.yml
+  - docker/test/
+  - security/

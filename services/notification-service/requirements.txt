@@ -30,3 +30,33 @@ Functions:
    - Delivery rates
    - Engagement metrics
    - Opt-out tracking
+
+
+
+
+
+
+
+
+
+
+   # Core
+github.com/rabbitmq/amqp091-go
+gorm.io/gorm
+gorm.io/driver/postgres
+
+# Email
+github.com/sendgrid/sendgrid-go
+
+# SMS/WhatsApp
+github.com/twilio/twilio-go
+
+# HTTP Server
+github.com/gorilla/mux
+
+# UUID
+github.com/google/uuid
+
+# Config
+github.com/spf13/viper
+

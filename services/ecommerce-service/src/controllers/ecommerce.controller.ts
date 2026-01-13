@@ -25,6 +25,7 @@ import {
   CreateSubscriptionDto
 } from '../dto/ecommerce.dto';
 import { AuthGuard } from '../guards/auth.guard';
+import { Roles } from '../decorators/roles.decorator';
 
 @Controller('ecommerce')
 export class EcommerceController {
@@ -314,5 +315,113 @@ export class EcommerceController {
       isBestSeller: true,
       limit: 8,
     });
+  }
+
+  // Payment endpoints
+  @Post('payments/intent')
+  @UseGuards(AuthGuard)
+  async createPaymentIntent(
+    @Body() body: { orderId: string; amount: number; currency?: string },
+    @Headers('x-user-id') userId: string,
+  ) {
+    return this.ecommerceService.createPaymentIntent(body.orderId, body.amount, body.currency);
+  }
+
+  @Post('payments/confirm')
+  @UseGuards(AuthGuard)
+  async confirmPayment(@Body() body: { paymentIntentId: string }) {
+    return this.ecommerceService.confirmPayment(body.paymentIntentId);
+  }
+
+  @Post('payments/refund')
+  @UseGuards(AuthGuard)
+  @Roles('ADMIN')
+  async createRefund(
+    @Body() body: { paymentIntentId: string; amount?: number },
+  ) {
+    return this.ecommerceService.createRefund(body.paymentIntentId, body.amount);
+  }
+
+  // Shipping endpoints
+  @Post('shipping/calculate')
+  async calculateShipping(
+    @Body() body: { address: any; items: any[] },
+  ) {
+    return this.ecommerceService.calculateShipping(body.address, body.items);
+  }
+
+  @Post('shipping/create')
+  @UseGuards(AuthGuard)
+  @Roles('ADMIN')
+  async createShipment(
+    @Body() body: { orderId: string; shippingMethod: any },
+  ) {
+    return this.ecommerceService.createShipment(body.orderId, body.shippingMethod);
+  }
+
+  @Get('shipping/track/:trackingNumber')
+  async trackShipment(@Param('trackingNumber') trackingNumber: string) {
+    return this.ecommerceService.trackShipment(trackingNumber);
+  }
+
+  // Supplier endpoints
+  @Post('suppliers')
+  @UseGuards(AuthGuard)
+  @Roles('ADMIN')
+  async createSupplier(@Body() createSupplierDto: any) {
+    return this.ecommerceService.createSupplier(createSupplierDto);
+  }
+
+  @Get('suppliers')
+  @UseGuards(AuthGuard)
+  async listSuppliers(@Query() query: any) {
+    return this.ecommerceService.listSuppliers(query);
+  }
+
+  @Post('purchase-orders')
+  @UseGuards(AuthGuard)
+  @Roles('ADMIN')
+  async createPurchaseOrder(
+    @Body() body: { supplierId: string; items: any[] },
+  ) {
+    return this.ecommerceService.createPurchaseOrder(body.supplierId, body.items);
+  }
+
+  @Post('purchase-orders/:id/receive')
+  @UseGuards(AuthGuard)
+  @Roles('ADMIN')
+  async receivePurchaseOrder(
+    @Param('id') id: string,
+    @Body() body: { items: any[] },
+  ) {
+    return this.ecommerceService.receivePurchaseOrder(id, body.items);
+  }
+
+  // Inventory endpoints
+  @Get('inventory/transactions')
+  @UseGuards(AuthGuard)
+  async getInventoryTransactions(@Query() query: any) {
+    return this.ecommerceService.getInventoryTransactions(query);
+  }
+
+  @Get('inventory/low-stock')
+  @UseGuards(AuthGuard)
+  async getLowStockAlerts(@Query('threshold') threshold: string) {
+    return this.ecommerceService.getLowStockAlerts(threshold ? parseInt(threshold) : 10);
+  }
+
+  // Analytics endpoints
+  @Get('analytics/products')
+  @UseGuards(AuthGuard)
+  @Roles('ADMIN')
+  async getProductAnalytics(@Query() query: any) {
+    return this.ecommerceService.getProductAnalytics(query);
+  }
+
+  @Get('analytics/inventory')
+  @UseGuards(AuthGuard)
+  @Roles('ADMIN')
+  async getInventoryAnalytics() {
+    return this.ecommerceService.getInventoryAnalytics();
   }
 }

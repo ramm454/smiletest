@@ -1,3 +1,323 @@
+
+// Pose Library Models
+model YogaPose {
+  id                String   @id @default(uuid())
+  name              String
+  sanskritName      String?
+  category          String
+  difficulty        String   // beginner, intermediate, advanced
+  benefits          String[]
+  contraindications String[]
+  instructions      String?
+  duration          Int?     // Suggested hold time in seconds
+  imageUrl          String?
+  videoUrl          String?
+  isActive          Boolean  @default(true)
+  createdBy         String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  sequences      SequencePose[]
+  poseProgress   PoseProgress[]
+
+  @@index([category])
+  @@index([difficulty])
+  @@index([isActive])
+}
+
+// Class Sequence Models
+model ClassSequence {
+  id            String         @id @default(uuid())
+  name          String
+  description   String
+  type          String         // morning, evening, energizing, relaxing, etc.
+  difficulty    String
+  totalDuration Int            // minutes
+  focusArea     String?
+  isTemplate    Boolean        @default(false)
+  instructorId  String?
+  isPublic      Boolean        @default(true)
+  usageCount    Int            @default(0)
+  averageRating Float          @default(0)
+
+  // Relations
+  instructor     Instructor?     @relation(fields: [instructorId], references: [id])
+  sequencePoses  SequencePose[]
+  classUses      YogaClass[]     @relation("SequenceClasses")
+  ratings        SequenceRating[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type])
+  @@index([difficulty])
+  @@index([isTemplate])
+  @@index([instructorId])
+}
+
+model SequencePose {
+  id                    String       @id @default(uuid())
+  sequenceId            String
+  poseId                String
+  order                 Int
+  duration              Int          // seconds
+  transitionInstructions String?
+  breathPattern         String?
+  notes                 String?
+
+  // Relations
+  sequence ClassSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  pose     YogaPose     @relation(fields: [poseId], references: [id])
+
+  @@unique([sequenceId, order])
+  @@index([sequenceId])
+  @@index([poseId])
+}
+
+model SequenceRating {
+  id         String   @id @default(uuid())
+  userId     String
+  sequenceId String
+  rating     Int      // 1-5
+  review     String?
+  createdAt  DateTime @default(now())
+
+  // Relations
+  sequence ClassSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sequenceId])
+  @@index([sequenceId])
+  @@index([userId])
+}
+
+// Certification Models
+model Certification {
+  id                String   @id @default(uuid())
+  name              String
+  description       String
+  type              String   // yoga_alliance, inhouse, international
+  durationHours     Int
+  modules           String[]
+  price             Float
+  prerequisites     String?
+  startDate         DateTime?
+  endDate           DateTime?
+  isActive          Boolean  @default(true)
+  certificationCode String   @unique
+  enrolledCount     Int      @default(0)
+  completedCount    Int      @default(0)
+  createdBy         String?
+
+  // Relations
+  enrollments CertificationEnrollment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type])
+  @@index([isActive])
+  @@index([certificationCode])
+}
+
+model CertificationEnrollment {
+  id              String   @id @default(uuid())
+  certificationId String
+  userId          String
+  instructorId    String?
+  status          String   @default("pending") // pending, active, completed, cancelled
+  enrolledDate    DateTime?
+  completedDate   DateTime?
+  progress        Json?    // moduleId -> progress percentage
+  overallProgress Int      @default(0)
+  certificateUrl  String?
+
+  // Relations
+  certification Certification @relation(fields: [certificationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([certificationId])
+  @@index([userId])
+  @@index([status])
+}
+
+// Progress Tracking Models
+model StudentPracticeLog {
+  id              String   @id @default(uuid())
+  userId          String
+  classId         String?
+  sequenceId      String?
+  duration        Int      // minutes
+  practiceType    String   // yoga, meditation, pranayama
+  focusArea       String?
+  caloriesBurned  Int?
+  heartRateAvg    Int?
+  posesPracticed  String[]
+  notes           String?
+  practiceDate    DateTime
+  moodRating      Int?     @default(0) // 1-5
+  energyLevel     Int?     @default(0) // 1-5
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, practiceDate])
+  @@index([practiceType])
+  @@index([classId])
+  @@index([sequenceId])
+}
+
+model PoseProgress {
+  id            String   @id @default(uuid())
+  userId        String
+  poseId        String
+  practiceCount Int      @default(0)
+  totalDuration Int      @default(0) // seconds
+  comfortLevel  Int      @default(0) // 1-5
+  mastered      Boolean  @default(false)
+  masteredDate  DateTime?
+  notes         Json?    // Array of {date, note, improvement}
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, poseId])
+  @@index([userId])
+  @@index([poseId])
+  @@index([mastered])
+}
+
+model PracticeStreak {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  currentStreak  Int      @default(0)
+  longestStreak  Int      @default(0)
+  lastPracticeDate DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model StudentGoal {
+  id             String   @id @default(uuid())
+  userId         String
+  goalType       String   // flexibility, strength, weight_loss, stress_reduction
+  target         String
+  targetDate     DateTime?
+  currentProgress Int      @default(0)
+  status         String   @default("active") // active, completed, abandoned
+  milestones     Json?    // Array of {description, targetDate, completed, completedDate}
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+// Instructor Models
+model Instructor {
+  id                String   @id @default(uuid())
+  userId            String   @unique
+  bio               String
+  specialties       String[]
+  rating            Float    @default(0)
+  experienceYears   Int
+  certifications    String[]
+  availabilitySchedule Json?  // JSON schedule
+  status            String   @default("ACTIVE") // ACTIVE, INACTIVE, ON_LEAVE
+  isVerified        Boolean  @default(false)
+  verificationDate  DateTime?
+  
+  // Relations
+  user              User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  classes           YogaClass[]
+  sequences         ClassSequence[]
+  enrollments       CertificationEnrollment[]
+  reviews           InstructorReview[]
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([status])
+  @@index([isVerified])
+}
+
+model InstructorReview {
+  id           String   @id @default(uuid())
+  instructorId String
+  userId       String
+  rating       Int      // 1-5
+  review       String?
+  isAnonymous  Boolean  @default(false)
+  
+  // Relations
+  instructor Instructor @relation(fields: [instructorId], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt  DateTime @default(now())
+  
+  @@unique([instructorId, userId])
+  @@index([instructorId])
+  @@index([userId])
+}
+
+// Yoga Class Model (Updated with instructor and sequence relations)
+model YogaClass {
+  id              String   @id @default(uuid())
+  title           String
+  description     String?
+  dateTime        DateTime
+  duration        Int      // minutes
+  type            String   // hatha, vinyasa, ashtanga, etc.
+  difficulty      String
+  maxParticipants Int
+  currentParticipants Int  @default(0)
+  price           Float    @default(0)
+  status          String   @default("scheduled") // scheduled, ongoing, completed, cancelled
+  location        String?  // physical location or "online"
+  meetingLink     String?  // for online classes
+  recordingUrl    String?  // for replay
+  
+  // Added fields
+  instructorId    String?
+  sequenceId      String?
+  
+  // Relations
+  instructor   Instructor? @relation(fields: [instructorId], references: [id])
+  sequence     ClassSequence? @relation("SequenceClasses", fields: [sequenceId], references: [id])
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([dateTime])
+  @@index([type])
+  @@index([difficulty])
+  @@index([status])
+  @@index([instructorId])
+  @@index([sequenceId])
+}
+
+// User model (assuming it exists or needs to be added)
+model User {
+  id              String   @id @default(uuid())
+  email           String   @unique
+  name            String
+  // ... other user fields
+  
+  // Relations
+  instructorProfile Instructor?
+  instructorReviews InstructorReview[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 generator client {
   provider = "prisma-client-js"
 }

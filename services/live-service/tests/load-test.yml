@@ -1,0 +1,94 @@
+config:
+  target: "http://localhost:3004"
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      name: "Warm up phase"
+    - duration: 120
+      arrivalRate: 20
+      name: "Load increase phase"
+    - duration: 180
+      arrivalRate: 50
+      name: "Peak load phase"
+    - duration: 60
+      arrivalRate: 10
+      name: "Cool down phase"
+  payload:
+    path: "test-data/users.csv"
+    fields:
+      - "userId"
+      - "sessionId"
+  defaults:
+    headers:
+      Content-Type: "application/json"
+      Authorization: "Bearer test-token-{{ $processEnvironment.TEST_TOKEN }}"
+
+scenarios:
+  - name: "Join Session Flow"
+    flow:
+      - post:
+          url: "/live/sessions/{{ sessionId }}/join"
+          json:
+            deviceType: "desktop"
+            browser: "chrome"
+          capture:
+            json: "$.viewerToken"
+            as: "viewerToken"
+      
+      - think: 2
+      
+      - post:
+          url: "/live/sessions/{{ sessionId }}/messages"
+          json:
+            message: "Hello from load test user {{ userId }}"
+            messageType: "TEXT"
+      
+      - think: 5
+      
+      - post:
+          url: "/live/sessions/{{ sessionId }}/quality-metrics"
+          json:
+            bitrate: 1500
+            latency: 120
+            packetLoss: 2.5
+            jitter: 15
+      
+      - think: 3
+      
+      - get:
+          url: "/live/sessions/{{ sessionId }}/participants"
+      
+      - post:
+          url: "/live/sessions/{{ sessionId }}/leave"
+          json:
+            userId: "{{ userId }}"
+
+  - name: "High Volume Chat"
+    weight: 3
+    flow:
+      - loop:
+          - post:
+              url: "/live/sessions/{{ sessionId }}/messages"
+              json:
+                message: "Message {{ $loopElement }} from {{ userId }}"
+                messageType: "TEXT"
+          count: 10
+          think: 1
+
+  - name: "Poll Interaction"
+    flow:
+      - post:
+          url: "/live/sessions/{{ sessionId }}/polls"
+          json:
+            question: "Load test poll {{ $timestamp }}"
+            options:
+              - { id: "1", text: "Option A" }
+              - { id: "2", text: "Option B" }
+              - { id: "3", text: "Option C" }
+      
+      - think: 2
+      
+      - post:
+          url: "/live/polls/{{ $processEnvironment.TEST_POLL_ID }}/vote"
+          json:
+            selectedOptions: ["1"]

@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import axios from 'axios';
+import { RRule } from 'rrule';
 import { 
   CreateYogaClassDto, 
   UpdateYogaClassDto,
@@ -12,6 +14,8 @@ const prisma = new PrismaClient();
 
 @Injectable()
 export class YogaService {
+  private userServiceUrl = process.env.USER_SERVICE_URL || 'http://user-service:3001';
+
   // Class Management
   async createClass(createYogaClassDto: CreateYogaClassDto, instructorId: string) {
     // Validate schedule
@@ -752,6 +756,27 @@ export class YogaService {
     };
   }
 
+  // Class Recommendations
+  async getClassRecommendations(userId: string) {
+    // Get user preferences from User Service
+    const userPreferences = await this.getUserPreferences(userId);
+    
+    // Get user's yoga profile
+    const userProfile = await this.getUserYogaProfile(userId);
+    
+    // Recommend classes based on preferences and profile
+    const recommendations = await prisma.yogaClass.findMany({
+      where: {
+        difficulty: userProfile.experienceLevel,
+        type: { in: userPreferences.yoga.preferredStyles },
+        status: 'SCHEDULED'
+      },
+      take: 10
+    });
+
+    return recommendations;
+  }
+
   // Helper Methods
   private async validateClassSchedule(classData: CreateYogaClassDto) {
     const { startTime, endTime, instructorId, room, location } = classData;
@@ -807,7 +832,6 @@ export class YogaService {
 
   private async createRecurringClasses(originalClass: any, recurrenceRule: string) {
     // Parse RRULE and create recurring classes
-    // This is a simplified implementation
     const rrule = RRule.fromString(recurrenceRule);
     const dates = rrule.all();
 
@@ -906,6 +930,47 @@ export class YogaService {
       distribution[review.rating]++;
     });
     return distribution;
+  }
+
+  private async getUserPreferences(userId: string) {
+    try {
+      const response = await axios.get(
+        `${this.userServiceUrl}/users/${userId}/preferences`,
+        {
+          headers: { 'x-service-token': process.env.SERVICE_TOKEN }
+        }
+      );
+      return response.data;
+    } catch (error) {
+      // Return default preferences if service unavailable
+      return {
+        yoga: {
+          preferredStyles: ['vinyasa', 'hatha'],
+          experienceLevel: 'beginner',
+          goals: ['flexibility', 'relaxation']
+        }
+      };
+    }
+  }
+
+  private async getUserYogaProfile(userId: string) {
+    try {
+      const response = await axios.get(
+        `${this.userServiceUrl}/users/${userId}/profile/yoga`,
+        {
+          headers: { 'x-service-token': process.env.SERVICE_TOKEN }
+        }
+      );
+      return response.data;
+    } catch (error) {
+      // Return default profile
+      return {
+        experienceLevel: 'beginner',
+        preferredStyles: [],
+        injuries: [],
+        medicalConditions: []
+      };
+    }
   }
 
   async checkDatabase() {

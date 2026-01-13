@@ -13,6 +13,169 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
+
+
+
+// Payment DTOs
+export class CreatePaymentIntentDto {
+  @IsString()
+  orderId: string;
+  
+  @IsNumber()
+  @Min(0.5) // Minimum $0.50
+  amount: number;
+  
+  @IsOptional()
+  @IsString()
+  @Length(3, 3)
+  currency?: string = 'USD';
+}
+
+export class ConfirmPaymentDto {
+  @IsString()
+  paymentIntentId: string;
+}
+
+export class CreateRefundDto {
+  @IsString()
+  paymentIntentId: string;
+  
+  @IsOptional()
+  @IsNumber()
+  @Min(0.01)
+  amount?: number;
+}
+
+// Shipping DTOs
+export class CalculateShippingDto {
+  @IsObject()
+  address: any;
+  
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ShippingItemDto)
+  items: ShippingItemDto[];
+}
+
+export class ShippingItemDto {
+  @IsString()
+  productId: string;
+  
+  @IsNumber()
+  @Min(1)
+  quantity: number;
+  
+  @IsOptional()
+  @IsString()
+  variantId?: string;
+}
+
+export class CreateShipmentDto {
+  @IsString()
+  orderId: string;
+  
+  @IsObject()
+  shippingMethod: any;
+}
+
+// Supplier DTOs
+export class CreateSupplierDto {
+  @IsString()
+  name: string;
+  
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+  
+  @IsOptional()
+  @IsString()
+  phone?: string;
+  
+  @IsOptional()
+  @IsObject()
+  address?: any;
+  
+  @IsOptional()
+  @IsString()
+  taxId?: string;
+  
+  @IsOptional()
+  @IsString()
+  contactPerson?: string;
+  
+  @IsOptional()
+  @IsString()
+  paymentTerms?: string = 'NET30';
+  
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  minimumOrder?: number = 0;
+  
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  leadTime?: number = 7;
+}
+
+export class CreatePurchaseOrderDto {
+  @IsString()
+  supplierId: string;
+  
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PurchaseOrderItemDto)
+  items: PurchaseOrderItemDto[];
+}
+
+export class PurchaseOrderItemDto {
+  @IsString()
+  productId: string;
+  
+  @IsNumber()
+  @Min(1)
+  quantity: number;
+  
+  @IsNumber()
+  @Min(0.01)
+  unitPrice: number;
+  
+  @IsOptional()
+  @IsString()
+  expectedDelivery?: string;
+}
+
+export class ReceivePurchaseOrderDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ReceivedItemDto)
+  items: ReceivedItemDto[];
+}
+
+export class ReceivedItemDto {
+  @IsString()
+  productId: string;
+  
+  @IsNumber()
+  @Min(1)
+  quantityReceived: number;
+}
+
+// Analytics DTOs
+export class ProductAnalyticsFilterDto {
+  @IsOptional()
+  @IsString()
+  startDate?: string;
+  
+  @IsOptional()
+  @IsString()
+  endDate?: string;
+  
+  @IsOptional()
+  @IsEnum(['day', 'week', 'month', 'year'])
+  groupBy?: string = 'month';
+}
+
 // Product DTOs
 export class CreateProductDto {
   @IsString()

@@ -2,22 +2,46 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaClient } from '@prisma/client';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
+import { BookingNotificationService } from './notification-integration';
+import axios from 'axios';
 
 const prisma = new PrismaClient();
 
 @Injectable()
 export class BookingService {
-  async create(createBookingDto: CreateBookingDto) {
+  private userServiceUrl = process.env.USER_SERVICE_URL || 'http://user-service:3001';
+
+  constructor(
+    private readonly notificationService: BookingNotificationService,
+  ) {}
+
+  async create(createBookingDto: CreateBookingDto, userId: string) {
+    // Validate user exists and is active
+    const user = await this.validateUser(userId);
+    
+    // Check user permissions
+    if (user.status !== 'ACTIVE') {
+      throw new BadRequestException('User account is not active');
+    }
+
+    // Add userId to DTO
+    const bookingData = {
+      ...createBookingDto,
+      userId,
+    };
+
     // Check availability
-    await this.checkAvailability(createBookingDto);
+    await this.checkAvailability(bookingData);
     
     // Calculate price
-    const priceDetails = await this.calculatePrice(createBookingDto);
+    const priceDetails = await this.calculatePrice(bookingData);
     
-    // Create booking
+    // Create booking with user info
     const booking = await prisma.booking.create({
       data: {
-        userId: createBookingDto.userId,
+        userId: userId,
+        userName: `${user.firstName} ${user.lastName}`,
+        userEmail: user.email,
         classId: createBookingDto.classId,
         sessionId: createBookingDto.sessionId,
         productId: createBookingDto.productId,
@@ -52,8 +76,19 @@ export class BookingService {
     // Create calendar event
     await this.createCalendarEvent(booking);
 
-    // Send notifications
-    await this.sendBookingConfirmation(booking);
+    // Send booking confirmation notification
+    await this.notificationService.sendBookingConfirmation(booking);
+
+    // Schedule reminders
+    await this.scheduleBookingReminders(booking);
+
+    // Publish booking created event (assuming eventBus is available)
+    // await this.eventBus.publishBookingEvent('booking.created', {
+    //   bookingId: booking.id,
+    //   userId,
+    //   classId: booking.classId,
+    //   totalAmount: booking.totalAmount
+    // });
 
     return booking;
   }
@@ -184,7 +219,7 @@ export class BookingService {
     });
 
     // Send update notification
-    await this.sendBookingUpdateNotification(updatedBooking);
+    await this.notificationService.sendBookingUpdateNotification(updatedBooking);
 
     return updatedBooking;
   }
@@ -225,8 +260,8 @@ export class BookingService {
     // Update availability
     await this.updateAvailabilityAfterCancellation(cancelledBooking);
 
-    // Send cancellation notifications
-    await this.sendCancellationNotification(cancelledBooking, refundAmount);
+    // Send cancellation notification
+    await this.notificationService.sendCancellationNotification(cancelledBooking, refundAmount);
 
     // Process refund if needed
     if (refundAmount > 0) {
@@ -329,7 +364,7 @@ export class BookingService {
     });
 
     // Send check-in confirmation
-    await this.sendCheckinConfirmation(updatedBooking);
+    await this.notificationService.sendCheckInConfirmation(updatedBooking);
 
     return updatedBooking;
   }
@@ -357,7 +392,7 @@ export class BookingService {
     });
 
     // Request review
-    await this.requestReview(updatedBooking);
+    await this.notificationService.requestReview(updatedBooking);
 
     return updatedBooking;
   }
@@ -422,6 +457,24 @@ export class BookingService {
         pages: Math.ceil(total / limit),
       },
     };
+  }
+
+  // User validation method
+  private async validateUser(userId: string) {
+    try {
+      const response = await axios.get(
+        `${this.userServiceUrl}/users/${userId}/validate`,
+        {
+          headers: { 'x-service-token': process.env.SERVICE_TOKEN }
+        }
+      );
+      return response.data;
+    } catch (error) {
+      if (error.response?.status === 404) {
+        throw new NotFoundException('User not found');
+      }
+      throw new BadRequestException('Unable to validate user');
+    }
   }
 
   // Helper methods
@@ -562,29 +615,19 @@ export class BookingService {
     }
   }
 
-  private async sendBookingConfirmation(booking: any) {
-    // Implementation depends on notification service
-    console.log(`Sending booking confirmation for booking ${booking.id}`);
-  }
-
-  private async sendBookingUpdateNotification(booking: any) {
-    console.log(`Sending booking update notification for booking ${booking.id}`);
-  }
-
-  private async sendCancellationNotification(booking: any, refundAmount: number) {
-    console.log(`Sending cancellation notification for booking ${booking.id}, refund: ${refundAmount}`);
-  }
-
-  private async sendCheckinConfirmation(booking: any) {
-    console.log(`Sending check-in confirmation for booking ${booking.id}`);
-  }
-
-  private async requestReview(booking: any) {
-    console.log(`Requesting review for booking ${booking.id}`);
-  }
-
-  private async processRefund(booking: any, amount: number) {
-    console.log(`Processing refund of ${amount} for booking ${booking.id}`);
+  private async scheduleBookingReminders(booking: any) {
+    // Schedule reminders at 24h, 2h, and 15m before
+    const reminderTimes = [24, 2, 0.25]; // in hours
+    
+    for (const hoursBefore of reminderTimes) {
+      const reminderTime = new Date(booking.startTime);
+      reminderTime.setHours(reminderTime.getHours() - hoursBefore);
+      
+      // Use a job queue (Bull, Agenda) or setTimeout for demo
+      setTimeout(async () => {
+        await this.notificationService.sendReminderNotification(booking, hoursBefore);
+      }, Math.max(0, reminderTime.getTime() - Date.now()));
+    }
   }
 
   private async updateAvailabilityAfterCancellation(booking: any) {
@@ -617,6 +660,25 @@ export class BookingService {
         },
       });
     }
+  }
+
+  private async processRefund(booking: any, refundAmount: number) {
+    // Implement refund processing logic here
+    // This would typically integrate with your payment provider
+    console.log(`Processing refund of ${refundAmount} for booking ${booking.id}`);
+    
+    // Create refund record
+    await prisma.payment.create({
+      data: {
+        bookingId: booking.id,
+        userId: booking.userId,
+        amount: -refundAmount, // Negative amount for refund
+        currency: booking.currency,
+        status: 'REFUNDED',
+        paymentMethod: booking.paymentMethod || 'CARD',
+        transactionId: `refund_${Date.now()}`,
+      },
+    });
   }
 
   async checkDatabase() {

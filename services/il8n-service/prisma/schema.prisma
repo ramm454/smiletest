@@ -1,0 +1,163 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+
+model Language {
+  id          String    @id @default(uuid())
+  code        String    @unique  // ISO 639-1 code (en, de, fr, etc.)
+  name        String
+  nativeName  String
+  direction   String    @default("ltr") // ltr or rtl
+  flagEmoji   String?
+  isActive    Boolean   @default(true)
+  isDefault   Boolean   @default(false)
+  
+  translations Translation[]
+  userPrefs    UserLanguagePreference[]
+  
+  @@index([code, isActive])
+}
+
+model Translation {
+  id            String   @id @default(uuid())
+  key           String   // Unique translation key
+  namespace     String   @default("common") // Service/component grouping
+  service       String   // Microservice name (auto-discovered)
+  context       Json?    // Additional context for AI translation
+  
+  // Translations in different languages
+  values        Json     // { "en": "Welcome", "de": "Willkommen", "fr": "Bienvenue" }
+  
+  // AI Metadata
+  aiGenerated   Boolean  @default(false)
+  confidence    Float?   // AI confidence score (0-1)
+  needsReview   Boolean  @default(false)
+  lastTrainedAt DateTime?
+  
+  // Relationships
+  languageRefs  Language[] @relation("TranslationLanguages")
+  
+  // Timestamps
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@unique([key, namespace, service])
+  @@index([service, namespace])
+  @@index([aiGenerated, needsReview])
+}
+
+model UserLanguagePreference {
+  id         String   @id @default(uuid())
+  userId     String   // Reference to user-service
+  languageId String
+  language   Language @relation(fields: [languageId], references: [id])
+  
+  // Priority order for fallback
+  priority   Int      @default(1)
+  isActive   Boolean  @default(true)
+  
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  
+  @@unique([userId, languageId])
+  @@index([userId, priority])
+}
+
+model ServiceRegistry {
+  id          String   @id @default(uuid())
+  serviceName String   @unique
+  baseUrl     String
+  healthUrl   String?
+  
+  // Auto-discovery metadata
+  lastDiscovered DateTime?
+  endpoints      Json?    // Discovered endpoints with methods
+  schemas        Json?    // OpenAPI/Swagger schemas
+  
+  // Translation coverage
+  supportedNamespaces String[]
+  translationCoverage Float    @default(0.0) // 0-1
+  
+  isActive     Boolean  @default(true)
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model GeoLanguageMapping {
+  id          String   @id @default(uuid())
+  countryCode String   // ISO 3166-1 alpha-2
+  countryName String
+  languages   String[] // Primary languages in order of prevalence
+  defaultLang String   // Default language for this country
+  
+  latitude    Float?
+  longitude   Float?
+  timezone    String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([countryCode])
+  @@index([countryCode, defaultLang])
+}
+
+model AIModel {
+  id            String   @id @default(uuid())
+  name          String   @unique
+  type          String   // "translation", "detection", "context"
+  architecture  String   // Model architecture info
+  version       String
+  
+  // Performance metrics
+  accuracy      Float?
+  bleuScore     Float?
+  trainingSize  Int
+  languages     String[]
+  
+  // File storage
+  modelPath     String
+  vocabPath     String?
+  configPath    String?
+  
+  isActive      Boolean  @default(true)
+  isTraining    Boolean  @default(false)
+  
+  lastTrained   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model TrainingJob {
+  id          String   @id @default(uuid())
+  modelId     String
+  model       AIModel  @relation(fields: [modelId], references: [id])
+  
+  status      String   @default("pending") // pending, training, completed, failed
+  progress    Float    @default(0.0)
+  
+  // Training data
+  datasetSize Int
+  languages   String[]
+  
+  // Metrics
+  startLoss   Float?
+  endLoss     Float?
+  metrics     Json?
+  
+  startedAt   DateTime?
+  completedAt DateTime?
+  failedAt    DateTime?
+  error       String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([modelId, status])
+}

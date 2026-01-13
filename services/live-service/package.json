@@ -11,7 +11,17 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "test:integration": "jest --testPathPattern=integration",
+    "test:load": "artillery run load-tests/load-test.yml",
+    "test:security": "npm run test:security-scan && npm run test:owasp",
+    "test:security-scan": "node scripts/security-scan.js",
+    "test:owasp": "npx @techteamer/owasp-js --path ./",
+    "test:performance": "k6 run tests/performance.js",
+    "test:complete": "npm run test && npm run test:integration && npm run test:e2e",
+    "test:ci": "npm run test:complete -- --ci --maxWorkers=2",
+    "test:debug": "node --inspect-brk -r ts-node/register -r tsconfig-paths/register node_modules/.bin/jest --runInBand"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.20",

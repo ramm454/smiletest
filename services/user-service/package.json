@@ -22,7 +22,14 @@
     "class-validator": "^0.14.0",
     "class-transformer": "^0.5.1",
     "reflect-metadata": "^0.1.13",
-    "rxjs": "^7.8.0"
+    "rxjs": "^7.8.0",
+    "speakeasy": "^2.0.0",
+  "qrcode": "^1.5.3",
+  "twilio": "^4.19.0",
+  "papaparse": "^5.4.1",
+  "google-auth-library": "^9.0.0",
+  "axios": "^1.6.0",
+  "joi": "^17.11.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",
@@ -37,6 +44,10 @@
     "ts-loader": "^9.4.4",
     "ts-node": "^10.9.1",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.1.6"
+    "typescript": "^5.1.6",
+     "@types/speakeasy": "^2.0.9",
+    "@types/qrcode": "^1.5.5",
+    "@types/twilio": "^3.19.3",
+    "@types/papaparse": "^5.3.14"
   }
 }

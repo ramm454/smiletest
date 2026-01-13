@@ -7,6 +7,569 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+
+// ============ GDPR COMPLIANCE MODELS ============
+
+// Data Processing Agreements
+model DataProcessingAgreement {
+  id                String   @id @default(uuid())
+  userId            String   // User who agreed
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  version           String   // DPA version
+  processorName     String   // Our company name as processor
+  controllerName    String   // User as controller (for B2B) or us as controller (B2C)
+  
+  // Processing purposes (Article 6 lawful bases)
+  purposes          Json     // JSON array of processing purposes with legal basis
+  
+  // Data categories being processed
+  dataCategories    String[] // ['personal_data', 'health_data', 'financial_data', etc.]
+  
+  // Third-party processors (sub-processors)
+  subProcessors     Json     // JSON array of sub-processors (AWS, Stripe, etc.)
+  
+  // International transfers
+  internationalTransfers Boolean @default(false)
+  transferMechanism String? // 'adequacy_decision', 'sccs', 'binding_corporate_rules'
+  
+  // Security measures
+  securityMeasures  Json     // JSON of security measures implemented
+  
+  // Duration
+  startDate         DateTime
+  endDate           DateTime?
+  
+  signedAt          DateTime @default(now())
+  ipAddress         String?
+  userAgent         String?
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@unique([userId, version])
+  @index([userId])
+  @index([startDate])
+}
+
+// Data Subject Requests (DSAR)
+model DataSubjectRequest {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  requestType       RequestType // ACCESS, RECTIFICATION, ERASURE, etc.
+  status            RequestStatus @default(PENDING)
+  priority          Priority @default(NORMAL)
+  
+  // Request details
+  description       String?
+  requestedData     String[] // Specific data fields requested
+  justification     String?  // Why the request (optional for some rights)
+  
+  // Verification
+  verificationMethod VerificationMethod @default(EMAIL)
+  verifiedAt        DateTime?
+  
+  // Processing
+  assignedTo        String?  // Staff member assigned
+  dueDate           DateTime? // Legal deadline (30 days typically)
+  completedAt       DateTime?
+  
+  // Response
+  responseData      Json?    // Data provided for access requests
+  responseNotes     String?
+  dataProvidedAt    DateTime?
+  
+  // Appeals
+  appealed          Boolean  @default(false)
+  appealReason      String?
+  appealResolvedAt  DateTime?
+  
+  // Audit trail
+  ipAddress         String?
+  userAgent         String?
+  requestSource     RequestSource @default(WEB)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @index([userId])
+  @index([requestType])
+  @index([status])
+  @index([createdAt])
+  @index([dueDate])
+}
+
+// Records of Processing Activities (ROPA) - Article 30
+model ProcessingActivity {
+  id                String   @id @default(uuid())
+  name              String
+  description       String
+  
+  // Controller/Processor info
+  controllerName    String   @default("Yoga Spa Platform Ltd.")
+  processorName     String?  // If we act as processor
+  
+  // Purposes and lawful basis
+  purposes          String[] // Purposes of processing
+  lawfulBasis       LawfulBasis[]
+  
+  // Data categories and subjects
+  dataCategories    String[]
+  dataSubjects      String[] // ['customers', 'employees', 'prospects']
+  
+  // Recipients
+  recipients        String[] // Who receives the data
+  thirdCountryTransfers Boolean @default(false)
+  
+  // Retention periods
+  retentionPeriod   String   // e.g., "3 years after account closure"
+  erasureProcedure  String?
+  
+  // Security measures
+  securityMeasures  String[]
+  
+  // Data Protection Officer contact
+  dpoEmail          String?
+  dpoPhone          String?
+  
+  isActive          Boolean  @default(true)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @index([name])
+  @index([isActive])
+}
+
+// Data Breach Records
+model DataBreach {
+  id                String   @id @default(uuid())
+  breachId          String   @unique // Internal breach ID
+  
+  // Breach details
+  type              BreachType
+  description       String
+  discoveredAt      DateTime
+  occurredFrom      DateTime?
+  occurredTo        DateTime?
+  
+  // Scope
+  affectedUsers     Int
+  affectedDataTypes String[] // ['email', 'password_hash', 'payment_info']
+  
+  // Impact assessment
+  riskLevel         RiskLevel
+  likelyConsequences String[]
+  
+  // Notification
+  notifiedDPA       Boolean  @default(false)
+  dpaNotifiedAt     DateTime?
+  dpaReference      String?
+  
+  notifiedSubjects  Boolean  @default(false)
+  subjectsNotifiedAt DateTime?
+  notificationMethod NotificationMethod?
+  
+  // Response
+  containmentActions String[]
+  mitigationActions  String[]
+  rootCause         String?
+  
+  // Closure
+  resolvedAt        DateTime?
+  closureNotes      String?
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @index([breachId])
+  @index([discoveredAt])
+  @index([riskLevel])
+}
+
+// Data Retention Rules
+model RetentionRule {
+  id                String   @id @default(uuid())
+  dataType          String   // e.g., 'user_profile', 'booking_records', 'payment_data'
+  category          DataCategory
+  legalBasis        String   // Legal requirement for retention
+  
+  retentionPeriod   Int      // In months
+  retentionTrigger  RetentionTrigger // 'account_closure', 'last_activity', 'fixed_date'
+  
+  // Auto-deletion settings
+  autoDelete        Boolean  @default(true)
+  deletionProcedure String?
+  
+  // Archiving
+  archiveBeforeDelete Boolean @default(false)
+  archivePeriod      Int?     // Months to archive before deletion
+  
+  isActive          Boolean  @default(true)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@unique([dataType])
+  @index([category])
+  @index([isActive])
+}
+
+// Cookie Consent (eCookie Directive)
+model CookieConsent {
+  id                String   @id @default(uuid())
+  userId            String?
+  sessionId         String   // For guests
+  
+  // Consent preferences
+  necessary         Boolean  @default(true)  // Always true, cannot opt-out
+  preferences       Boolean  @default(false) // Personalization cookies
+  analytics         Boolean  @default(false) // Analytics cookies
+  marketing         Boolean  @default(false) // Marketing cookies
+  
+  // Cookie categories with details
+  cookiePreferences Json     // Detailed preferences per cookie
+  
+  // Consent string (IAB TCF compliant)
+  consentString     String?
+  vendorListVersion String?
+  
+  // Technical details
+  userAgent         String?
+  ipAddress         String?
+  country           String?
+  
+  // Updates
+  lastUpdatedAt     DateTime @updatedAt
+  createdAt         DateTime @default(now())
+  
+  @index([userId])
+  @index([sessionId])
+  @index([createdAt])
+}
+
+// Add to existing User model:
+model User {
+  // ... existing fields ...
+  
+  // GDPR fields
+  gdprConsentGiven  Boolean  @default(false)
+  gdprConsentDate   DateTime?
+  dataProcessingAgreements DataProcessingAgreement[]
+  dataSubjectRequests      DataSubjectRequest[]
+  
+  // Data minimization flags
+  dataMinimized     Boolean  @default(false)
+  pseudonymized     Boolean  @default(false)
+  
+  // Deletion
+  scheduledForDeletion Boolean @default(false)
+  deletionScheduledAt DateTime?
+  anonymizedAt       DateTime?
+  
+  // Export
+  lastDataExportAt  DateTime?
+}
+
+// ============ ENUMS ============
+
+enum RequestType {
+  ACCESS
+  RECTIFICATION
+  ERASURE
+  RESTRICTION
+  PORTABILITY
+  OBJECTION
+  WITHDRAW_CONSENT
+}
+
+enum RequestStatus {
+  PENDING
+  VERIFICATION_REQUIRED
+  IN_PROGRESS
+  COMPLETED
+  REJECTED
+  APPEALED
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT  // For urgent requests from supervisory authority
+}
+
+enum VerificationMethod {
+  EMAIL
+  SMS
+  ID_DOCUMENT
+  IN_PERSON
+  OTHER
+}
+
+enum RequestSource {
+  WEB
+  EMAIL
+  PHONE
+  POST
+  IN_PERSON
+}
+
+enum LawfulBasis {
+  CONSENT
+  CONTRACT
+  LEGAL_OBLIGATION
+  VITAL_INTERESTS
+  PUBLIC_TASK
+  LEGITIMATE_INTERESTS
+}
+
+enum BreachType {
+  CONFIDENTIALITY
+  INTEGRITY
+  AVAILABILITY
+  MULTIPLE
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum NotificationMethod {
+  EMAIL
+  SMS
+  POST
+  WEBSITE_NOTICE
+}
+
+enum DataCategory {
+  PERSONAL_DATA
+  SENSITIVE_DATA  // Health, biometric, etc.
+  FINANCIAL_DATA
+  LOCATION_DATA
+  COMMUNICATION_DATA
+  BEHAVIORAL_DATA
+}
+
+enum RetentionTrigger {
+  ACCOUNT_CLOSURE
+  LAST_ACTIVITY
+  FIXED_DATE
+  CONTRACT_TERMINATION
+  CONSENT_WITHDRAWAL
+}
+
+
+
+
+// Guest Sessions (temporary users)
+model GuestSession {
+  id            String   @id @default(uuid())
+  sessionId     String   @unique
+  email         String?  // Optional email for later conversion
+  temporaryId   String   @unique // For referencing before account creation
+  
+  // Guest profile data
+  firstName     String?
+  lastName      String?
+  preferences   Json?    // JSON: {yogaPreferences: {}, notifications: {}}
+  
+  // Booking data before registration
+  cartItems     Json?    // JSON array of pending bookings
+  wishlist      Json?    // JSON array of saved items
+  
+  // Conversion tracking
+  conversionToken String? // Token for converting to full account
+  convertedUserId String? // After conversion
+  
+  // Expiry
+  expiresAt     DateTime @default(now() + 24h) // 24 hour expiry
+  lastActivityAt DateTime @default(now())
+  
+  // Metadata
+  ipAddress     String?
+  userAgent     String?
+  deviceId      String?
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @index([sessionId])
+  @index([temporaryId])
+  @index([expiresAt])
+  @index([email])
+}
+
+
+
+
+
+
+// Add to existing schema.prisma
+
+// MFA Settings
+model MFASettings {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // MFA Methods
+  emailMFA     Boolean  @default(false)
+  smsMFA       Boolean  @default(false)
+  appMFA       Boolean  @default(false)
+  
+  // TOTP for app-based MFA
+  totpSecret   String?
+  totpVerified Boolean  @default(false)
+  
+  // SMS MFA
+  phoneNumber  String?
+  phoneVerified Boolean @default(false)
+  
+  // Backup codes
+  backupCodes  String[] // JSON array of backup codes
+  
+  // Recovery email
+  recoveryEmail String?
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @index([userId])
+}
+
+// User Tags & Segmentation
+model UserTag {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  color       String?  @default("#3B82F6")
+  isSystem    Boolean  @default(false)
+  
+  users       User[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @index([name])
+}
+
+// User-Tag mapping (many-to-many)
+model UserTagMap {
+  id        String   @id @default(uuid())
+  userId    String
+  tagId     String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tag       UserTag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  
+  @@unique([userId, tagId])
+  @index([userId])
+  @index([tagId])
+}
+
+// Consent Management
+model UserConsent {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Consent types
+  consentType String   // 'privacy_policy', 'terms_of_service', 'marketing_emails', 'cookies', 'data_processing'
+  version     String   // Version of the document
+  granted     Boolean  @default(false)
+  grantedAt   DateTime?
+  revokedAt   DateTime?
+  
+  // IP and device info for audit
+  ipAddress   String?
+  userAgent   String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([userId, consentType])
+  @index([userId])
+  @index([consentType])
+}
+
+// Account Linking
+model LinkedAccount {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Provider info
+  provider      String   // 'google', 'facebook', 'apple', 'github'
+  providerId    String   // External ID from provider
+  
+  // Profile data from provider
+  email         String?
+  displayName   String?
+  avatarUrl     String?
+  accessToken   String?  @db.Text
+  refreshToken  String?  @db.Text
+  expiresAt     DateTime?
+  
+  // Metadata
+  isPrimary     Boolean  @default(false)
+  verified      Boolean  @default(false)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@unique([provider, providerId])
+  @@unique([userId, provider])
+  @index([userId])
+  @index([provider])
+}
+
+// User Activity (Enhanced)
+model UserActivity {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  activityType String   // 'login', 'logout', 'profile_update', 'password_change', 'consent_granted', etc.
+  entityType   String?  // 'user', 'booking', 'payment', etc.
+  entityId     String?  // ID of the related entity
+  description  String?
+  
+  // Detailed metadata
+  metadata     Json?
+  ipAddress    String?
+  userAgent    String?
+  location     String?  // Could be derived from IP
+  
+  createdAt    DateTime @default(now())
+  
+  @index([userId])
+  @index([activityType])
+  @index([createdAt])
+}
+
+// Add to User model (extend existing):
+model User {
+  // ... existing fields ...
+  
+  // Add these relations
+  mfaSettings     MFASettings?
+  tags            UserTagMap[]
+  consents        UserConsent[]
+  linkedAccounts  LinkedAccount[]
+  activities      UserActivity[]
+}
+
+
+
+
+
+
 model User {
   id              String   @id @default(uuid())
   email           String   @unique
@@ -18,6 +581,8 @@ model User {
   bio             String?
   role            UserRole @default(MEMBER)
   status          UserStatus @default(ACTIVE)
+  isGuest         Boolean   @default(false)
+  guestExpiresAt  DateTime? // When guest account converts/deletes
   
   // Authentication
   emailVerified   Boolean  @default(false)

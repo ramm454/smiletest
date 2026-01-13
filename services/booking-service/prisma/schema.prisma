@@ -1,3 +1,153 @@
+model RecurringBooking {
+  id                    String   @id @default(uuid())
+  userId                String
+  classId               String?
+  sessionId             String?
+  productId             String?
+  
+  // Scheduling
+  firstOccurrence       DateTime
+  duration              Int      // minutes
+  recurrenceType        String   // DAILY, WEEKLY, BIWEEKLY, MONTHLY, CUSTOM
+  repeatEvery           Int?     @default(1)
+  daysOfWeek            String[] // 0-6 for Sunday-Saturday
+  customRule            String?  // RRULE format
+  endDate               DateTime?
+  occurrenceCount       Int?
+  excludeDates          String[]
+  
+  // Participants
+  participants          Int      @default(1)
+  participantNames      String[]
+  guestEmails           String[]
+  
+  // Status
+  status                String   @default("ACTIVE") // ACTIVE, PAUSED, CANCELLED, COMPLETED
+  pauseUntil            DateTime?
+  skipOccurrences       String[]
+  cancellationReason    String?
+  
+  // Details
+  notes                 String?
+  specialRequests       String?
+  source                String   @default("WEB")
+  
+  // Pricing
+  basePrice             Float
+  discount              Float    @default(0.0)
+  totalAmount           Float
+  currency              String   @default("USD")
+  paymentPlanId         String?
+  
+  // Counters
+  generatedCount        Int      @default(0)
+  cancelledCount        Int      @default(0)
+  
+  // Timestamps
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  // Relations
+  bookings              Booking[]
+  
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model GroupBooking {
+  id                    String   @id @default(uuid())
+  userId                String
+  classId               String?
+  sessionId             String?
+  
+  // Scheduling
+  startTime             DateTime
+  endTime               DateTime
+  timezone              String   @default("UTC")
+  
+  // Group Info
+  groupName             String
+  pricingType           String   @default("PER_PERSON") // FIXED, PER_PERSON, TIERED
+  groupPrice            Float?
+  minParticipants       Int      @default(2)
+  maxParticipants       Int?
+  discountPercentage    Float    @default(0.0)
+  
+  // Status
+  status                String   @default("PENDING") // PENDING, CONFIRMED, CANCELLED, PARTIAL, COMPLETED
+  source                String   @default("WEB")
+  notes                 String?
+  specialRequests       String?
+  requireAllPayment     Boolean  @default(false)
+  
+  // Financials
+  totalAmount           Float
+  amountPaid            Float    @default(0.0)
+  amountDue             Float
+  
+  // Counters
+  confirmedMembers      Int      @default(0)
+  pendingMembers        Int      @default(0)
+  cancelledMembers      Int      @default(0)
+  
+  // Invitation
+  invitationToken       String?  @unique
+  invitationExpiresAt   DateTime?
+  reminderSentAt        DateTime?
+  
+  // Timestamps
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  // Relations
+  members               GroupMember[]
+  bookings              Booking[]
+  
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model GroupMember {
+  id                    String   @id @default(uuid())
+  groupBookingId        String
+  email                 String
+  firstName             String?
+  lastName              String?
+  phone                 String?
+  userId                String?
+  
+  // Status
+  status                String   @default("INVITED") // INVITED, CONFIRMED, DECLINED, CANCELLED, WAITLIST
+  price                 Float
+  amountPaid            Float    @default(0.0)
+  amountDue             Float
+  isPrimary             Boolean  @default(false)
+  
+  // Invitation
+  invitationToken       String?  @unique
+  invitedAt             DateTime?
+  respondedAt           DateTime?
+  paymentCompletedAt    DateTime?
+  
+  // Timestamps
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  // Relations
+  groupBooking          GroupBooking @relation(fields: [groupBookingId], references: [id])
+  booking               Booking?     @relation(fields: [bookingId], references: [id])
+  bookingId             String?
+  
+  @@unique([groupBookingId, email])
+  @@index([groupBookingId])
+  @@index([email])
+  @@index([status])
+}
+
+
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -70,6 +220,22 @@ model Booking {
   @@index([status])
   @@index([createdAt])
   @@index([startTime])
+
+
+
+  // Add recurringBookingId and groupBookingId to existing Booking model
+
+
+
+  recurringBookingId    String?
+  recurringBooking      RecurringBooking? @relation(fields: [recurringBookingId], references: [id])
+  
+  groupBookingId        String?
+  groupBooking          GroupBooking?     @relation(fields: [groupBookingId], references: [id])
+  
+  groupMemberId         String?
+  groupMember           GroupMember?      @relation(fields: [groupMemberId], references: [id])
+
 }
 
 model CalendarEvent {

@@ -4,7 +4,6 @@ Functions:
 // Core User Management:
 1. Authentication
    - Email/password registration
-   - Social login (Google, Facebook)
    - OAuth 2.0 / OpenID Connect
    - Multi-factor authentication
    

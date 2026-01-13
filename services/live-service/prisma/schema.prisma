@@ -7,6 +7,743 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+
+
+
+
+
+// Add to services/live-service/prisma/schema.prisma
+model EncryptionLog {
+  id          String   @id @default(uuid())
+  sessionId   String
+  session     LiveSession @relation(fields: [sessionId], references: [id])
+  algorithm   String
+  keyVersion  String
+  metadata    Json
+  createdAt   DateTime @default(now())
+  
+  @@index([sessionId])
+  @@index([createdAt])
+}
+
+model EncryptionConfiguration {
+  id              String   @id @default(uuid())
+  sessionId       String   @unique
+  session         LiveSession @relation(fields: [sessionId], references: [id])
+  algorithm       String
+  sessionKey      String?
+  sessionIv       String?
+  participantKeys Json?    // Array of participant key data
+  enabled         Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([sessionId])
+}
+
+model DataAccessAudit {
+  id          String   @id @default(uuid())
+  sessionId   String
+  session     LiveSession @relation(fields: [sessionId], references: [id])
+  userId      String
+  user        User @relation(fields: [userId], references: [id])
+  action      String   // VIEW, EDIT, DELETE, EXPORT
+  dataType    String   // SESSION, PARTICIPANT, CHAT, RECORDING
+  ipAddress   String?
+  userAgent   String?
+  timestamp   DateTime @default(now())
+  metadata    Json?
+  
+  @@index([sessionId])
+  @@index([userId])
+  @@index([action])
+  @@index([timestamp])
+}
+
+model DataDeletionLog {
+  id          String   @id @default(uuid())
+  sessionId   String
+  session     LiveSession @relation(fields: [sessionId], references: [id])
+  deletionType String   // RETENTION_POLICY, USER_REQUEST, ADMIN
+  deletedAt   DateTime @default(now())
+  metadata    Json?
+  
+  @@index([sessionId])
+  @@index([deletedAt])
+}
+
+model DataExportLog {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User @relation(fields: [userId], references: [id])
+  exportType  String   // USER_DATA, SESSION_DATA, ALL_DATA
+  format      String   // JSON, CSV, PDF
+  requestedAt DateTime @default(now())
+  completedAt DateTime?
+  filePath    String?
+  metadata    Json?
+  
+  @@index([userId])
+  @@index([requestedAt])
+}
+
+model DataAnonymizationLog {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User @relation(fields: [userId], references: [id])
+  anonymousId String
+  anonymizedAt DateTime @default(now())
+  metadata    Json?
+  
+  @@index([userId])
+  @@index([anonymousId])
+}
+
+model ConsentLog {
+  id          String   @id @default(uuid())
+  sessionId   String
+  session     LiveSession @relation(fields: [sessionId], references: [id])
+  userId      String
+  user        User @relation(fields: [userId], references: [id])
+  consentType String   // DATA_COLLECTION, MARKETING, THIRD_PARTY
+  granted     Boolean
+  grantedAt   DateTime @default(now())
+  revokedAt   DateTime?
+  metadata    Json?
+  
+  @@unique([sessionId, userId, consentType])
+  @@index([sessionId])
+  @@index([userId])
+  @@index([granted])
+}
+
+model SecurityAlert {
+  id          String   @id @default(uuid())
+  sessionId   String
+  session     LiveSession @relation(fields: [sessionId], references: [id])
+  userId      String?
+  user        User? @relation(fields: [userId], references: [id])
+  alertType   String
+  severity    AlertSeverity @default(LOW)
+  data        Json?
+  triggeredAt DateTime @default(now())
+  acknowledgedAt DateTime?
+  status      AlertStatus @default(PENDING)
+  metadata    Json?
+  
+  @@index([sessionId])
+  @@index([userId])
+  @@index([alertType])
+  @@index([severity])
+  @@index([triggeredAt])
+}
+
+enum AlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AlertStatus {
+  PENDING
+  ACKNOWLEDGED
+  RESOLVED
+  FALSE_ALARM
+}
+
+
+// Add to services/live-service/prisma/schema.prisma
+model ClosedCaption {
+  id              String   @id @default(uuid())
+  sessionId       String
+  session         LiveSession @relation(fields: [sessionId], references: [id])
+  recordingId     String?
+  recording       Recording? @relation(fields: [recordingId], references: [id])
+  language        String   @default("en")
+  provider        String   // auto, manual, external
+  status          CaptionStatus @default(PROCESSING)
+  captionText     String?
+  captionSegments Json?    // Array of {start, end, text}
+  filePaths       Json?    // {srt, vtt, json}
+  processedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([sessionId])
+  @@index([recordingId])
+  @@index([status])
+}
+
+model UserAccessibilityPreference {
+  id                  String   @id @default(uuid())
+  userId              String
+  user                User @relation(fields: [userId], references: [id])
+  sessionId           String
+  session             LiveSession @relation(fields: [sessionId], references: [id])
+  screenReaderEnabled Boolean  @default(false)
+  keyboardNavigation  Boolean  @default(false)
+  highContrastMode    Boolean  @default(false)
+  fontSize            String?  // small, medium, large, x-large
+  navigationConfig    Json?    // Custom navigation settings
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  @@unique([userId, sessionId])
+  @@index([userId])
+  @@index([sessionId])
+}
+
+model AccessibilityUsageLog {
+  id          String   @id @default(uuid())
+  sessionId   String
+  session     LiveSession @relation(fields: [sessionId], references: [id])
+  userId      String
+  user        User @relation(fields: [userId], references: [id])
+  feature     String   // captions, screen_reader, keyboard_nav, etc.
+  action      String   // enabled, disabled, used, adjusted
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  
+  @@index([sessionId])
+  @@index([userId])
+  @@index([feature])
+  @@index([createdAt])
+}
+
+enum CaptionStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+  MANUAL_REVIEW
+}
+
+
+// Add to services/live-service/prisma/schema.prisma
+model SessionShare {
+  id          String   @id @default(uuid())
+  sessionId   String
+  session     LiveSession @relation(fields: [sessionId], references: [id])
+  userId      String
+  user        User @relation(fields: [userId], references: [id])
+  platform    String   // facebook, twitter, linkedin, whatsapp, etc.
+  shareToken  String   @unique
+  shareUrl    String
+  message     String?
+  clickCount  Int      @default(0)
+  joinCount   Int      @default(0)
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  
+  @@index([sessionId])
+  @@index([userId])
+  @@index([shareToken])
+}
+
+model CommunityPost {
+  id          String   @id @default(uuid())
+  sessionId   String
+  session     LiveSession @relation(fields: [sessionId], references: [id])
+  userId      String
+  user        User @relation(fields: [userId], references: [id])
+  title       String
+  content     String?
+  type        PostType @default(DISCUSSION)
+  tags        String[]
+  isPublic    Boolean  @default(true)
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  comments    PostComment[]
+  likes       PostLike[]
+  
+  @@index([sessionId])
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model PostComment {
+  id          String   @id @default(uuid())
+  postId      String
+  post        CommunityPost @relation(fields: [postId], references: [id])
+  userId      String
+  user        User @relation(fields: [userId], references: [id])
+  content     String
+  parentId    String?
+  parent      PostComment? @relation("CommentReplies", fields: [parentId], references: [id])
+  replies     PostComment[] @relation("CommentReplies")
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([postId])
+  @@index([userId])
+  @@index([parentId])
+  @@index([createdAt])
+}
+
+model PostLike {
+  id          String   @id @default(uuid())
+  postId      String
+  post        CommunityPost @relation(fields: [postId], references: [id])
+  userId      String
+  user        User @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
+  
+  @@unique([postId, userId])
+  @@index([postId])
+  @@index([userId])
+}
+
+model CommunityGroup {
+  id          String   @id @default(uuid())
+  sessionId   String
+  session     LiveSession @relation(fields: [sessionId], references: [id])
+  createdById String
+  createdBy   User @relation(fields: [createdById], references: [id])
+  name        String
+  description String?
+  isPublic    Boolean  @default(true)
+  maxMembers  Int      @default(50)
+  tags        String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  members     GroupMember[]
+  
+  @@index([sessionId])
+  @@index([createdById])
+}
+
+model GroupMember {
+  id          String   @id @default(uuid())
+  groupId     String
+  group       CommunityGroup @relation(fields: [groupId], references: [id])
+  userId      String
+  user        User @relation(fields: [userId], references: [id])
+  role        GroupRole @default(MEMBER)
+  joinedAt    DateTime @default(now())
+  
+  @@unique([groupId, userId])
+  @@index([groupId])
+  @@index([userId])
+}
+
+enum PostType {
+  DISCUSSION
+  QUESTION
+  RESOURCE
+  ANNOUNCEMENT
+  REVIEW
+}
+
+enum GroupRole {
+  ADMIN
+  MODERATOR
+  MEMBER
+}
+
+
+
+// Add to services/live-service/prisma/schema.prisma
+model PushNotificationToken {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User @relation(fields: [userId], references: [id])
+  token       String
+  platform    String   // ios, android
+  lastActive  DateTime @default(now())
+  createdAt   DateTime @default(now())
+  
+  @@unique([userId, token])
+  @@index([userId])
+  @@index([token])
+}
+
+model OfflineContent {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User @relation(fields: [userId], references: [id])
+  sessionId       String
+  session         LiveSession @relation(fields: [sessionId], references: [id])
+  recordingId     String?
+  recording       Recording? @relation(fields: [recordingId], references: [id])
+  downloadStatus  DownloadStatus @default(PENDING)
+  filePath        String?
+  fileSize        Int?
+  downloadedAt    DateTime?
+  expiresAt       DateTime?
+  lastAccessed    DateTime?
+  accessCount     Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@unique([userId, recordingId])
+  @@index([userId])
+  @@index([sessionId])
+  @@index([downloadStatus])
+}
+
+model NotificationDelivery {
+  id                    String   @id @default(uuid())
+  userId                String
+  user                  User @relation(fields: [userId], references: [id])
+  type                  NotificationType @default(PUSH)
+  title                 String
+  body                  String?
+  data                  Json?
+  tokensSent            Int
+  successfulDeliveries  Int
+  deliveredAt           DateTime @default(now())
+  
+  @@index([userId])
+  @@index([deliveredAt])
+}
+
+enum DownloadStatus {
+  PENDING
+  DOWNLOADING
+  COMPLETED
+  FAILED
+  EXPIRED
+}
+
+enum NotificationType {
+  PUSH
+  EMAIL
+  SMS
+  IN_APP
+}
+
+// Add to services/live-service/prisma/schema.prisma
+model SessionTicket {
+  id                String   @id @default(uuid())
+  sessionId         String
+  session           LiveSession @relation(fields: [sessionId], references: [id])
+  stripeProductId   String
+  stripePriceId     String
+  ticketType        String   @default("general") // general, vip, early-bird
+  price             Float
+  currency          String   @default("USD")
+  quantityAvailable Int
+  quantitySold      Int      @default(0)
+  isActive          Boolean  @default(true)
+  metadata          Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  purchases         TicketPurchase[]
+  
+  @@index([sessionId])
+  @@index([ticketType])
+  @@index([isActive])
+}
+
+model TicketPurchase {
+  id                  String   @id @default(uuid())
+  ticketId            String
+  ticket              SessionTicket @relation(fields: [ticketId], references: [id])
+  userId              String
+  user                User @relation(fields: [userId], references: [id])
+  stripeSessionId     String?
+  stripePaymentIntentId String?
+  status              PurchaseStatus @default(PENDING)
+  amount              Float
+  currency            String   @default("USD")
+  metadata            Json?
+  createdAt           DateTime @default(now())
+  completedAt         DateTime?
+  
+  @@unique([ticketId, userId])
+  @@index([ticketId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model SubscriptionPlan {
+  id                String   @id @default(uuid())
+  instructorId      String
+  instructor        User @relation(fields: [instructorId], references: [id])
+  stripeProductId   String
+  stripePriceId     String
+  name              String
+  description       String?
+  price             Float
+  currency          String   @default("USD")
+  interval          String   @default("month") // month, year
+  intervalCount     Int      @default(1)
+  features          Json     // Array of feature strings
+  maxSessions       Int?     // Max sessions per period
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  subscriptions     UserSubscription[]
+  
+  @@index([instructorId])
+  @@index([isActive])
+}
+
+model UserSubscription {
+  id                    String   @id @default(uuid())
+  userId                String
+  user                  User @relation(fields: [userId], references: [id])
+  planId                String
+  plan                  SubscriptionPlan @relation(fields: [planId], references: [id])
+  stripeSubscriptionId  String?
+  stripeSessionId       String?
+  status                SubscriptionStatus @default(PENDING)
+  amount                Float
+  currency              String   @default("USD")
+  interval              String   @default("month")
+  features              Json
+  currentPeriodStart    DateTime?
+  currentPeriodEnd      DateTime?
+  metadata              Json?
+  createdAt             DateTime @default(now())
+  activatedAt           DateTime?
+  canceledAt            DateTime?
+  
+  @@unique([userId, planId])
+  @@index([userId])
+  @@index([planId])
+  @@index([status])
+  @@index([currentPeriodEnd])
+}
+
+model CheckoutToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  sessionId String
+  session   LiveSession @relation(fields: [sessionId], references: [id])
+  ticketId  String?
+  ticket    SessionTicket? @relation(fields: [ticketId], references: [id])
+  expiresAt DateTime
+  metadata  Json?
+  createdAt DateTime @default(now())
+  
+  @@index([token])
+  @@index([expiresAt])
+}
+
+enum PurchaseStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+  EXPIRED
+}
+
+enum SubscriptionStatus {
+  PENDING
+  ACTIVE
+  CANCELED
+  EXPIRED
+  TRIALING
+}
+
+// Add to existing schema
+
+
+model ModerationLog {
+  id          String   @id @default(uuid())
+  sessionId   String
+  session     LiveSession @relation(fields: [sessionId], references: [id])
+  moderatorId String
+  moderator   User @relation("ModeratorActions", fields: [moderatorId], references: [id])
+  targetUserId String
+  targetUser  User @relation("UserModerations", fields: [targetUserId], references: [id])
+  action      String
+  reason      String?
+  duration    Int?     // in minutes
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  
+  @@index([sessionId])
+  @@index([moderatorId])
+  @@index([targetUserId])
+  @@index([createdAt])
+}
+
+model ModerationWarning {
+  id          String   @id @default(uuid())
+  sessionId   String
+  session     LiveSession @relation(fields: [sessionId], references: [id])
+  userId      String
+  user        User @relation(fields: [userId], references: [id])
+  reason      String?
+  warningCount Int
+  createdAt   DateTime @default(now())
+  
+  @@unique([sessionId, userId])
+  @@index([sessionId])
+  @@index([userId])
+}
+
+model ContentFilter {
+  id            String   @id @default(uuid())
+  sessionId     String   @unique
+  session       LiveSession @relation(fields: [sessionId], references: [id])
+  profanityFilter Boolean @default(true)
+  linkFilter    Boolean  @default(true)
+  spamFilter    Boolean  @default(true)
+  blockedWords  String[]
+  messageRateLimit Int?   // messages per minute
+  aiModeration  Json?    // AI moderation config
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+
+model BreakoutRoom {
+  id          String   @id @default(uuid())
+  sessionId   String
+  session     LiveSession @relation(fields: [sessionId], references: [id])
+  name        String
+  description String?
+  maxParticipants Int
+  currentParticipants Int @default(0)
+  hostId      String?
+  isActive    Boolean  @default(true)
+  
+  participants BreakoutRoomParticipant[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@index([sessionId])
+  @@index([isActive])
+}
+
+model BreakoutRoomParticipant {
+  id          String   @id @default(uuid())
+  roomId      String
+  room        BreakoutRoom @relation(fields: [roomId], references: [id])
+  userId      String
+  user        User @relation(fields: [userId], references: [id])
+  joinedAt    DateTime @default(now())
+  leftAt      DateTime?
+  
+  @@unique([roomId, userId])
+  @@index([roomId])
+  @@index([userId])
+}
+
+model SessionTemplate {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  type        String
+  duration    Int
+  maxParticipants Int
+  waitlistEnabled Boolean @default(true)
+  chatEnabled Boolean @default(true)
+  pollsEnabled Boolean @default(false)
+  recordingEnabled Boolean @default(true)
+  breakoutRoomsEnabled Boolean @default(false)
+  settings    Json?
+  tags        String[]
+  createdById String
+  createdBy   User @relation(fields: [createdById], references: [id])
+  usageCount  Int    @default(0)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([createdById])
+  @@index([type])
+}
+
+model QualityMetrics {
+  id          String   @id @default(uuid())
+  sessionId   String
+  session     LiveSession @relation(fields: [sessionId], references: [id])
+  userId      String
+  user        User @relation(fields: [userId], references: [id])
+  
+  // Network metrics
+  bitrate     Float
+  latency     Float
+  packetLoss  Float
+  jitter      Float
+  
+  // Device metrics
+  resolution  String?
+  frameRate   Float?
+  cpuUsage    Float?
+  memoryUsage Float?
+  
+  timestamp   DateTime @default(now())
+  
+  @@index([sessionId])
+  @@index([userId])
+  @@index([timestamp])
+}
+
+model Transcription {
+  id          String   @id @default(uuid())
+  sessionId   String
+  session     LiveSession @relation(fields: [sessionId], references: [id])
+  recordingId String?
+  recording   Recording? @relation(fields: [recordingId], references: [id])
+  
+  language    String   @default("en")
+  status      TranscriptionStatus @default(PROCESSING)
+  progress    Int?     // percentage
+  text        String?
+  segments    Json?    // Array of {start, end, text, speaker}
+  wordTimestamps Json?
+  
+  processedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([sessionId])
+  @@index([recordingId])
+  @@index([status])
+}
+
+enum TranscriptionStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model Quiz {
+  id          String   @id @default(uuid())
+  sessionId   String
+  session     LiveSession @relation(fields: [sessionId], references: [id])
+  title       String
+  questions   Json     // Array of question objects
+  timeLimit   Int?     // in seconds
+  isActive    Boolean  @default(true)
+  
+  submissions QuizSubmission[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([sessionId])
+  @@index([isActive])
+}
+
+model QuizSubmission {
+  id          String   @id @default(uuid())
+  quizId      String
+  quiz        Quiz @relation(fields: [quizId], references: [id])
+  userId      String
+  user        User @relation(fields: [userId], references: [id])
+  answers     Json     // Array of answer objects
+  score       Float?
+  submittedAt DateTime @default(now())
+  
+  @@unique([quizId, userId])
+  @@index([quizId])
+  @@index([userId])
+  @@index([score])
+}
+
 model LiveSession {
   id                  String   @id @default(uuid())
   title               String
